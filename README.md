@@ -5,26 +5,34 @@ Automated coding of cultural trait variables from PDF source documents using LLM
 ## Requirements
 
 - Python 3.12+
-- [uv](https://docs.astral.sh/uv/) (scripts use inline dependency metadata)
 - An LLM provider: Anthropic API key, OpenAI API key, local [Ollama](https://ollama.com/) instance, or [LM Studio](https://lmstudio.ai/)
 
 ## Setup
 
-1. Set API keys as needed:
+1. Create a virtual environment and install dependencies:
+
+```bash
+python -m venv venv
+source venv/bin/activate        # Linux/macOS
+# venv\Scripts\activate         # Windows
+pip install -r requirements.txt
+```
+
+2. Set API keys as needed:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 export OPENAI_API_KEY="sk-..."
 ```
 
-2. Place PDF source documents in `docs/`.
+3. Place PDF source documents in `docs/`.
 
-3. Put CLDF dataset into `./dataset` (make sure `./dataset/cldf/*-metadata.json` exists).
+4. Put CLDF dataset into `./dataset` (make sure `./dataset/cldf/*-metadata.json` exists).
 
-4. Run the setup script to copy variable/code definitions and extract gold-standard codings:
+5. Run the setup script to copy variable/code definitions and extract gold-standard codings:
 
 ```bash
-uv run setup_dataset.py
+python setup_dataset.py
 ```
 
 This will:
@@ -81,7 +89,7 @@ The required format is - `codes.csv`
   └──────┴──────────────┴──────┴─────────────────────────────────────────────────────────────┘
 
 
-5. Edit the system prompt file `PROMPT.md` to make any changes you want.
+6. Edit the system prompt file `PROMPT.md` to make any changes you want.
 
 
 ## Usage
@@ -89,9 +97,9 @@ The required format is - `codes.csv`
 ### Code a single document
 
 ```bash
-uv run code_traits.py docs/example.pdf --model anthropic/claude-opus-4-8
-uv run code_traits.py docs/example.pdf --model ollama/llama3.2
-uv run code_traits.py docs/example.pdf --model lm_studio/gemma-4-e4b --api-base http://localhost:1234/v1
+python code_traits.py docs/example.pdf --model anthropic/claude-opus-4-8
+python code_traits.py docs/example.pdf --model ollama/llama3.2
+python code_traits.py docs/example.pdf --model lm_studio/gemma-4-e4b --api-base http://localhost:1234/v1
 ```
 
 Results are saved to `<model_name>/<pdf_stem>.json`.
@@ -114,8 +122,8 @@ Results are saved to `<model_name>/<pdf_stem>.json`.
 Run all PDFs under a size limit:
 
 ```bash
-uv run run_batch.py anthropic/claude-opus-4-8 --max-mb 2
-uv run run_batch.py ollama/llama3.2 --max-mb 5 --dry-run
+python run_batch.py anthropic/claude-opus-4-8 --max-mb 2
+python run_batch.py ollama/llama3.2 --max-mb 5 --dry-run
 ```
 
 Already-coded documents are skipped unless `--force` is passed.
@@ -125,22 +133,22 @@ Already-coded documents are skipped unless `--force` is passed.
 Compare a single model output against the gold codings:
 
 ```bash
-uv run evaluate.py claude-opus-4-8/example.json
+python evaluate.py claude-opus-4-8/example.json
 ```
 
 Summarise accuracy across all documents for a model:
 
 ```bash
-uv run summarise.py claude-opus-4-8/
+python summarise.py claude-opus-4-8/
 ```
 
 ### Inspect document statistics
 
 ```bash
-uv run check_pdf.py
+python check_pdf.py
 ```
 
-Prints page count, character count, token count, and number of gold-coded variables for each PDF.
+Prints page count, character count, and number of gold-coded variables for each PDF.
 
 ## Project structure
 
@@ -150,7 +158,7 @@ run_batch.py        Batch runner for all PDFs in docs/
 evaluate.py         Per-variable comparison of coded output vs gold standard
 summarise.py        Aggregate accuracy summary across documents for a model
 setup_dataset.py    Copies variables/codes from CLDF and extracts gold codings
-check_pdf.py        Document statistics (pages, chars, tokens, coded variables)
+check_pdf.py        Document statistics (pages, chars, coded variables)
 variables.csv       Variable definitions
 codes.csv           Valid code values for option-type variables
 gold/               Gold-standard codings (one JSON per source document)

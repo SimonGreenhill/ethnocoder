@@ -1,11 +1,4 @@
-#!/usr/bin/env -S uv run
-# /// script
-# requires-python = ">=3.12,<3.14"
-# dependencies = [
-#   "litellm",
-#   "pymupdf",
-# ]
-# ///
+#!/usr/bin/env python3
 """
 Code a PDF source document for cultural traits using an LLM.
 

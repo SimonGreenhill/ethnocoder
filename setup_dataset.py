@@ -1,7 +1,4 @@
-#!/usr/bin/env -S uv run
-# /// script
-# requires-python = ">=3.12,<3.14"
-# ///
+#!/usr/bin/env python3
 """
 Set up working files from a CLDF dataset.
 

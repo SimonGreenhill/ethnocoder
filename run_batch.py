@@ -1,8 +1,4 @@
-#!/usr/bin/env -S uv run
-# /// script
-# requires-python = ">=3.12,<3.14"
-# dependencies = []
-# ///
+#!/usr/bin/env python3
 """
 Run code_traits.py on all PDFs in docs/ under a size limit.
 
@@ -54,10 +50,10 @@ def main() -> None:
         size_mb = pdf.stat().st_size / 1_000_000
         print(f"[{i}/{len(todo)}] {pdf.name} ({size_mb:.2f}MB)", flush=True)
         if args.dry_run:
-            print(f"  → would run: uv run code_traits.py --model {args.model} {pdf}")
+            print(f"  → would run: python code_traits.py --model {args.model} {pdf}")
             continue
         result = subprocess.run(
-            ["uv", "run", "code_traits.py", "--model", args.model, str(pdf)],
+            [sys.executable, "code_traits.py", "--model", args.model, str(pdf)],
         )
         if result.returncode == 0:
             ok += 1
