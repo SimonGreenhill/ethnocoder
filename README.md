@@ -42,53 +42,6 @@ This will:
 
 Edit variables.csv or codes.csv if you want to remove certain variables or codes etc.
 
-The required format is - `variables.csv`
-
-  ┌─────┬────────────────────────────────┬───────────────────────────────────────────┬──────────┬───────────────────┐
-  │ ID  │              Name              │                Description                │ Datatype │      Section      │
-  ├─────┼────────────────────────────────┼───────────────────────────────────────────┼──────────┼───────────────────┤
-  │     │                                │ A time focus is the period of time to     │          │ Traditional State │
-  │ 1   │ Traditional State Time Focus   │ which ethnographic data on a particular   │ Text     │  Time Focus       │
-  │     │                                │ society is applicable.                    │          │                   │
-  ├─────┼────────────────────────────────┼───────────────────────────────────────────┼──────────┼───────────────────┤
-  │ 2   │ Belief in god(s)               │ A god is a supernatural agent with a      │ Option   │ Belief            │
-  │     │                                │ broad sphere of influence and concern.    │          │ (Indigenous)      │
-  ├─────┼────────────────────────────────┼───────────────────────────────────────────┼──────────┼───────────────────┤
-  │     │ Belief in supernatural         │ Impiety is behaviour that is directly     │          │ Belief            │
-  │ 7   │ punishment for impiety         │ offensive to gods or other supernatural   │ Option   │ (Indigenous)      │
-  │     │                                │ agents.                                   │          │                   │
-  ├─────┼────────────────────────────────┼───────────────────────────────────────────┼──────────┼───────────────────┤
-  │     │ Distance to closest landmass   │ Minimum distance to the nearest landmass  │          │                   │
-  │ 28  │ inhabited by a different       │ inhabited by a different culture.         │ Float    │ Isolation         │
-  │     │ culture (km)                   │                                           │          │                   │
-  ├─────┼────────────────────────────────┼───────────────────────────────────────────┼──────────┼───────────────────┤
-  │ 34  │ Maximum elevation (meters)     │ Of island with largest population of      │ Float    │ Physical          │
-  │     │                                │ culture or largest island if unknown.     │          │ Environment       │
-  ├─────┼────────────────────────────────┼───────────────────────────────────────────┼──────────┼───────────────────┤
-  │ 45  │ Estimate of culture population │                                           │ Int      │ Social            │
-  │     │  size at relevant time focus   │                                           │          │ Environment       │
-  └─────┴────────────────────────────────┴───────────────────────────────────────────┴──────────┴───────────────────┘
-
-
-The required format is - `codes.csv`
-    
-  ┌──────┬──────────────┬──────┬─────────────────────────────────────────────────────────────┐
-  │  ID  │ Parameter_ID │ Name │                         Description                         │
-  ├──────┼──────────────┼──────┼─────────────────────────────────────────────────────────────┤
-  │ 40-0 │ 2            │ 0    │ Absent (do not feature in the belief system of the culture) │
-  ├──────┼──────────────┼──────┼─────────────────────────────────────────────────────────────┤
-  │ 40-1 │ 2            │ 1    │ Present, but not a major focus of supernatural practice     │
-  ├──────┼──────────────┼──────┼─────────────────────────────────────────────────────────────┤
-  │ 40-2 │ 2            │ 2    │ Present, and a major focus of supernatural practice         │
-  ├──────┼──────────────┼──────┼─────────────────────────────────────────────────────────────┤
-  │ 40-3 │ 2            │ 3    │ Present, and the principal focus of supernatural practice   │
-  ├──────┼──────────────┼──────┼─────────────────────────────────────────────────────────────┤
-  │ 42-0 │ 7            │ 0    │ Absent                                                      │
-  ├──────┼──────────────┼──────┼─────────────────────────────────────────────────────────────┤
-  │ 42-1 │ 7            │ 1    │ Present                                                     │
-  └──────┴──────────────┴──────┴─────────────────────────────────────────────────────────────┘
-
-
 6. Edit the system prompt file `PROMPT.md` to make any changes you want.
 
 
