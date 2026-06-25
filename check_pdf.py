@@ -7,10 +7,15 @@ Usage:
     python check_pdf.py --docs-dir docs --gold-dir gold
 """
 
+import argparse
 import json
 from pathlib import Path
 
 import pymupdf
+from rich.console import Console
+from rich.table import Table
+
+console = Console()
 
 
 def pdf_stats(pdf_path: Path) -> dict:
@@ -31,15 +36,16 @@ def gold_stats(gold_path: Path) -> dict:
 
 
 def main() -> None:
-    import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--docs-dir", type=Path, default=Path("docs"))
     parser.add_argument("--gold-dir", type=Path, default=Path("gold"))
     args = parser.parse_args()
 
-    header = f"{'source':<30s} {'pages':>5s} {'chars':>10s} {'coded':>5s}"
-    print(header)
-    print("-" * len(header))
+    table = Table(show_header=True, box=None, pad_edge=False)
+    table.add_column("Source", min_width=30)
+    table.add_column("Pages", justify="right")
+    table.add_column("Chars", justify="right")
+    table.add_column("Coded", justify="right")
 
     rows = []
     for gold_file in sorted(args.gold_dir.glob("*.json")):
@@ -51,18 +57,21 @@ def main() -> None:
         ps = pdf_stats(pdf_path)
         gs = gold_stats(gold_file)
         rows.append({"stem": stem, **ps, **gs})
-        print(f"{stem:<30s} {ps['pages']:5d} {ps['chars']:10,d} {gs['coded']:5d}")
+        table.add_row(stem, str(ps["pages"]), f"{ps['chars']:,d}", str(gs["coded"]))
 
-    print(f"\n{'':30s} {'pages':>5s} {'chars':>10s} {'coded':>5s}")
     if rows:
         n = len(rows)
         avg = lambda k: sum(r[k] for r in rows) / n
-        print(f"{'mean':<30s} {avg('pages'):5.0f} {avg('chars'):10,.0f} {avg('coded'):5.1f}")
         mn = lambda k: min(r[k] for r in rows)
         mx = lambda k: max(r[k] for r in rows)
-        print(f"{'min':<30s} {mn('pages'):5d} {mn('chars'):10,d} {mn('coded'):5d}")
-        print(f"{'max':<30s} {mx('pages'):5d} {mx('chars'):10,d} {mx('coded'):5d}")
-        print(f"\n{n} documents")
+        table.add_section()
+        table.add_row("[dim]mean[/dim]", f"[dim]{avg('pages'):.0f}[/dim]", f"[dim]{avg('chars'):,.0f}[/dim]", f"[dim]{avg('coded'):.1f}[/dim]")
+        table.add_row("[dim]min[/dim]", f"[dim]{mn('pages')}[/dim]", f"[dim]{mn('chars'):,d}[/dim]", f"[dim]{mn('coded')}[/dim]")
+        table.add_row("[dim]max[/dim]", f"[dim]{mx('pages')}[/dim]", f"[dim]{mx('chars'):,d}[/dim]", f"[dim]{mx('coded')}[/dim]")
+
+    console.print(table)
+    if rows:
+        console.print(f"\n{n} documents")
 
 
 if __name__ == "__main__":
