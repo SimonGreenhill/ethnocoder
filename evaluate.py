@@ -65,17 +65,31 @@ def normalize_code(value) -> str:
         return s
 
 
+def load_codings(path: Path) -> list[dict]:
+    """Load a codings JSON file, handling format variants."""
+    text = strip_fences(path.read_text(encoding="utf-8"))
+    if text.startswith("{{"):
+        text = text[1:]
+    raw = json.loads(text)
+    if isinstance(raw, dict) and "raw_response" in raw and "codings" not in raw:
+        raw = json.loads(strip_fences(raw["raw_response"]))
+    if isinstance(raw, list):
+        return raw
+    return raw.get("codings", [])
+
+
+def load_codings_as_dict(path: Path) -> dict[str, str]:
+    """Load codings and return {id: normalized_code}, skipping nulls."""
+    return {
+        str(r.get("id") or r.get("variable")): normalize_code(r.get("code"))
+        for r in load_codings(path)
+        if r.get("code") is not None
+    }
+
+
 def eval_codings(gold_path: Path, coded_path: Path, variables_path: Path) -> None:
-    with open(gold_path, encoding="utf-8") as f:
-        gold_raw = json.load(f)
-    coded_text = strip_fences(coded_path.read_text(encoding="utf-8"))
-    # Fix double-brace bug from older prefill code
-    if coded_text.startswith("{{"):
-        coded_text = coded_text[1:]
-    coded_raw = json.loads(coded_text)
-    # Old log-entry format: {"timestamp":..., "raw_response": "<json string>"}
-    if isinstance(coded_raw, dict) and "raw_response" in coded_raw and "codings" not in coded_raw:
-        coded_raw = json.loads(strip_fences(coded_raw["raw_response"]))
+    gold_raw = load_codings(gold_path)
+    coded_list = load_codings(coded_path)
 
     # Load variable names for display
     var_names: dict[str, str] = {}
@@ -91,11 +105,10 @@ def eval_codings(gold_path: Path, coded_path: Path, variables_path: Path) -> Non
     }
 
     # Index coded by id (handle both "id" and older "variable" key)
-    codings_list = coded_raw if isinstance(coded_raw, list) else coded_raw.get("codings", [])
     coded: dict[str, str] = {}
     coded_confidence: dict[str, str] = {}
     coded_justification: dict[str, str] = {}
-    for r in codings_list:
+    for r in coded_list:
         vid = str(r.get("id") or r.get("variable"))
         coded[vid] = normalize_code(r.get("code"))
         if r.get("confidence"):

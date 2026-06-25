@@ -1,43 +1,18 @@
 #!/usr/bin/env python3
 # coding=utf-8
-"""..."""
+"""Summarise accuracy across all documents for a model."""
 
-import json
 from pathlib import Path
+
+from evaluate import load_codings_as_dict
 
 GOLD_DIR = Path("gold")
 
-def get(f):
-    try:
-        o = json.loads(f.read_text())
-    except Exception:
-        print(f"ERROR -- {f}")
-        print(f.read_text())
-        raise
-    
-    if 'codings' in o:
-        return convert(o['codings'])
-    return convert(o)
 
-
-# converts list of dicts to dict
-def convert(alist):
-    def _(x):
-        if 'id' in x:
-            return int(x["id"])
-        elif 'variable_id' in x:
-            return int(x["variable_id"])
-        raise ValueError("?")
-    
-    return {_(l): l['code'] for l in alist}
-
-
-def compare(gold, code):
+def compare(gold: dict[str, str], coded: dict[str, str]) -> tuple[int, int]:
     same, diff = 0, 0
-    for i in gold:
-        if gold[i] is None:
-            continue
-        elif i not in code or str(gold[i]) != str(code[i]):
+    for vid, gold_code in gold.items():
+        if vid not in coded or gold_code != coded[vid]:
             diff += 1
         else:
             same += 1
@@ -49,11 +24,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Compare coded JSON outputs against gold standard')
     parser.add_argument("modeldir", help='modeldir', type=Path)
     args = parser.parse_args()
-    
+
     overall = {'same': 0, 'total': 0}
-    for p in args.modeldir.glob("*.json"):
-        coded = get(p)
-        gold = get(GOLD_DIR / p.name)
+    for p in sorted(args.modeldir.glob("*.json")):
+        coded = load_codings_as_dict(p)
+        gold = load_codings_as_dict(GOLD_DIR / p.name)
         same, total = compare(gold, coded)
         m = same / total if total else 0
         print(f"{p.stem:20s}\t{same:5d}\t{total:5d}\t{m:0.4f}")
