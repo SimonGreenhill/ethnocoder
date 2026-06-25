@@ -2,7 +2,6 @@
 # /// script
 # requires-python = ">=3.12,<3.14"
 # dependencies = [
-#   "litellm",
 #   "pymupdf",
 # ]
 # ///
@@ -15,13 +14,9 @@ Usage:
 """
 
 import json
-import sys
 from pathlib import Path
 
 import pymupdf
-import logging
-logging.getLogger("LiteLLM").setLevel(logging.ERROR)
-import litellm
 
 
 def pdf_stats(pdf_path: Path) -> dict:
@@ -30,8 +25,7 @@ def pdf_stats(pdf_path: Path) -> dict:
     text = "\n\n".join(page.get_text() for page in doc)
     doc.close()
     chars = len(text)
-    tokens = litellm.token_counter(model="gpt-3.5-turbo", text=text)
-    return {"pages": pages, "chars": chars, "tokens": tokens}
+    return {"pages": pages, "chars": chars}
 
 
 def gold_stats(gold_path: Path) -> dict:
@@ -49,7 +43,7 @@ def main() -> None:
     parser.add_argument("--gold-dir", type=Path, default=Path("gold"))
     args = parser.parse_args()
 
-    header = f"{'source':<30s} {'pages':>5s} {'chars':>10s} {'tokens':>8s} {'coded':>5s}"
+    header = f"{'source':<30s} {'pages':>5s} {'chars':>10s} {'coded':>5s}"
     print(header)
     print("-" * len(header))
 
@@ -58,23 +52,22 @@ def main() -> None:
         stem = gold_file.stem
         pdf_path = args.docs_dir / f"{stem}.pdf"
         if not pdf_path.exists():
-            pass   #print(f"{stem:<30s}  ** PDF not found **", file=sys.stderr)
             continue
 
         ps = pdf_stats(pdf_path)
         gs = gold_stats(gold_file)
         rows.append({"stem": stem, **ps, **gs})
-        print(f"{stem:<30s} {ps['pages']:5d} {ps['chars']:10,d} {ps['tokens']:8,d} {gs['coded']:5d}")
+        print(f"{stem:<30s} {ps['pages']:5d} {ps['chars']:10,d} {gs['coded']:5d}")
 
-    print(f"\n{'':30s} {'pages':>5s} {'chars':>10s} {'tokens':>8s} {'coded':>5s}")
+    print(f"\n{'':30s} {'pages':>5s} {'chars':>10s} {'coded':>5s}")
     if rows:
         n = len(rows)
         avg = lambda k: sum(r[k] for r in rows) / n
-        print(f"{'mean':<30s} {avg('pages'):5.0f} {avg('chars'):10,.0f} {avg('tokens'):8,.0f} {avg('coded'):5.1f}")
+        print(f"{'mean':<30s} {avg('pages'):5.0f} {avg('chars'):10,.0f} {avg('coded'):5.1f}")
         mn = lambda k: min(r[k] for r in rows)
         mx = lambda k: max(r[k] for r in rows)
-        print(f"{'min':<30s} {mn('pages'):5d} {mn('chars'):10,d} {mn('tokens'):8,d} {mn('coded'):5d}")
-        print(f"{'max':<30s} {mx('pages'):5d} {mx('chars'):10,d} {mx('tokens'):8,d} {mx('coded'):5d}")
+        print(f"{'min':<30s} {mn('pages'):5d} {mn('chars'):10,d} {mn('coded'):5d}")
+        print(f"{'max':<30s} {mx('pages'):5d} {mx('chars'):10,d} {mx('coded'):5d}")
         print(f"\n{n} documents")
 
 
