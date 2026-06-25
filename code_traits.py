@@ -9,10 +9,10 @@
 """
 Code a PDF source document for cultural traits using an LLM.
 
-Reads variables from ./traits/variables.csv and valid codes from ./traits/codes.csv,
+Reads variables from ./variables.csv and valid codes from ./codes.csv,
 then prompts the model to assign the most appropriate code for each variable based
-on the content of a PDF source document. Raw JSON response is always saved to
-<pdf_stem>.json for later parsing.
+on the content of a PDF source document. Results are saved to
+<model_name>/<pdf_stem>.json.
 
 LiteLLM is used for provider-agnostic LLM calls. The --model flag accepts any
 LiteLLM model string, e.g.:
