@@ -10,7 +10,7 @@ GOLD_DIR = Path("gold")
 def get(f):
     try:
         o = json.loads(f.read_text())
-    except Exception as e:
+    except Exception:
         print(f"ERROR -- {f}")
         print(f.read_text())
         raise
