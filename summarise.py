@@ -55,10 +55,13 @@ if __name__ == '__main__':
         coded = get(p)
         gold = get(GOLD_DIR / p.name)
         same, total = compare(gold, coded)
-        m = same / total
+        m = same / total if total else 0
         print(f"{p.stem:20s}\t{same:5d}\t{total:5d}\t{m:0.4f}")
         overall['same'] += same
         overall['total'] += total
 
-    pc = (overall['same'] / overall['total']) * 100
-    print(f"\n{overall['same']} / {overall['total']} = {pc:0.2f}%")
+    if overall['total']:
+        pc = (overall['same'] / overall['total']) * 100
+        print(f"\n{overall['same']} / {overall['total']} = {pc:0.2f}%")
+    else:
+        print("\nNo comparable variables found.")
