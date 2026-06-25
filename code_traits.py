@@ -232,7 +232,6 @@ def llm_stream(
         delta = chunk.choices[0].delta.content or ""
         if delta:
             chunks.append(delta)
-            #print(delta, end="", flush=True)
     return strip_fences("".join(chunks))
 
 
