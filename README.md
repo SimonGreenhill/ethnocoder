@@ -1,6 +1,6 @@
-# LLM Cultural Trait Coder
+# Ethnocoder
 
-Automated coding of cultural trait variables from PDF source documents using LLMs. Given a CLDF datasets, a PDF and a set of variable definitions, the system prompts an LLM to assign standardised codes for each variable, then evaluates accuracy against gold-standard codings.
+Automated coding of cultural trait variables from PDF source documents using LLMs. Given a CLDF dataset, a PDF and a set of variable definitions, the system prompts an LLM to assign standardised codes for each variable, then evaluates accuracy against gold-standard codings.
 
 ## Requirements
 
