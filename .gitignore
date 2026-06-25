@@ -4,4 +4,4 @@ docs
 dataset
 env
 gold/
-
+__pycache__
