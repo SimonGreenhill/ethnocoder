@@ -103,6 +103,12 @@ python check_pdf.py
 
 Prints page count, character count, and number of gold-coded variables for each PDF.
 
+## Tests
+
+```bash
+python -m pytest tests.py -v
+```
+
 ## Project structure
 
 ```
