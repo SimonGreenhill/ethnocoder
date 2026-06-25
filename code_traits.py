@@ -220,8 +220,6 @@ def llm_stream(
     api_base: str | None,
 ) -> str:
     """Make a streaming LLM call and return stripped response text."""
-    msgs = messages[:]
-
     kwargs: dict = {"stream": True}
     if not is_anthropic and not model.startswith("lm_studio/"):
         kwargs["response_format"] = {"type": "json_object"}
@@ -229,7 +227,7 @@ def llm_stream(
         kwargs["api_base"] = api_base
 
     chunks: list[str] = []
-    response = litellm.completion(model=model, messages=msgs, **kwargs)
+    response = litellm.completion(model=model, messages=messages, **kwargs)
     for chunk in response:
         delta = chunk.choices[0].delta.content or ""
         if delta:
