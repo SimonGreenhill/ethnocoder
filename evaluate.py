@@ -13,26 +13,19 @@ import argparse
 import csv
 import json
 import sys
-import textwrap
 from pathlib import Path
 
-# ANSI colour helpers — disabled automatically when not a TTY
-def _is_tty() -> bool:
-    return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
 
-def _c(code: str, text: str) -> str:
-    return f"\033[{code}m{text}\033[0m" if _is_tty() else text
+console = Console()
 
-def green(t: str) -> str: return _c("32", t)
-def red(t: str) -> str:   return _c("31", t)
-def yellow(t: str) -> str: return _c("33", t)
-def dim(t: str) -> str:   return _c("2", t)
-
-CONF_COLOUR = {
-    "high":   green,
-    "medium": yellow,
-    "low":    red,
-    "absent": red,
+CONF_STYLE = {
+    "high":   "green",
+    "medium": "yellow",
+    "low":    "red",
+    "absent": "red",
 }
 
 VARIABLES_CSV = Path("./variables.csv")
@@ -115,59 +108,50 @@ def eval_codings(gold_path: Path, coded_path: Path, variables_path: Path) -> Non
 
     matches = 0
     mismatches = 0
-    missing = 0  # in gold but not in coded output
+    missing = 0
 
-    col_id = 6
-    col_name = 35
-    col_gold = 10
-    col_coded = 10
-    col_conf = 8
-    wrap_width = 100
-
-    header = (
-        f"{'ID':<{col_id}}  {'Variable':<{col_name}}  {'Gold':<{col_gold}}  {'Coded':<{col_coded}}  {'Conf':<{col_conf}}  Match"
-    )
-    print(dim(header))
-    print(dim("-" * len(header)))
-
-    indent = " " * (col_id + 2)
+    table = Table(show_header=True, header_style="dim", box=None, pad_edge=False)
+    table.add_column("ID", width=6)
+    table.add_column("Variable", width=35)
+    table.add_column("Gold", width=10)
+    table.add_column("Coded", width=10)
+    table.add_column("Conf", width=8)
+    table.add_column("Match", width=5)
 
     for var_id, gold_code in sorted(gold.items(), key=lambda x: int(x[0])):
-        name = var_names.get(var_id, "?")[:col_name]
+        name = var_names.get(var_id, "?")[:35]
         confidence = coded_confidence.get(var_id, "")
         justification = coded_justification.get(var_id, "")
-        conf_coloured = CONF_COLOUR.get(confidence, str)(confidence) if confidence else ""
+        conf_style = CONF_STYLE.get(confidence, "")
+        conf_text = Text(confidence, style=conf_style) if confidence else Text("")
 
         if var_id not in coded:
             coded_code = "(missing)"
-            mark = yellow("?")
+            mark = Text("?", style="yellow")
             missing += 1
         else:
             coded_code = coded[var_id]
             if gold_code == coded_code:
-                mark = green("✓")
+                mark = Text("✓", style="green")
                 matches += 1
             else:
-                mark = red("✗")
+                mark = Text("✗", style="red")
                 mismatches += 1
 
-        # Pad confidence to col_conf using raw string length (colour codes add invisible chars)
-        conf_pad = conf_coloured + " " * max(0, col_conf - len(confidence))
-        print(
-            f"{var_id:<{col_id}}  {name:<{col_name}}  {gold_code:<{col_gold}}  {coded_code:<{col_coded}}  {conf_pad}  {mark}"
-        )
+        table.add_row(var_id, name, gold_code, coded_code, conf_text, mark)
         if justification:
-            for line in textwrap.wrap(justification, width=wrap_width - len(indent)):
-                print(dim(indent + line))
+            table.add_row("", Text(justification, style="dim"), "", "", "", "")
+
+    console.print(table)
 
     total = matches + mismatches + missing
     pct = 100 * matches / (matches + mismatches) if (matches + mismatches) > 0 else 0
-    colour = green if pct >= 80 else yellow if pct >= 50 else red
-    print()
-    print(f"Correct:  {colour(f'{matches}/{matches + mismatches} ({pct:.1f}%)')}")
+    style = "green" if pct >= 80 else "yellow" if pct >= 50 else "red"
+    console.print()
+    console.print(f"Correct:  [{style}]{matches}/{matches + mismatches} ({pct:.1f}%)[/{style}]")
     if missing:
-        print(yellow(f"Missing:  {missing} variables present in gold but absent from coded output"))
-    print(dim(f"Skipped:  {len(gold_raw) - total} variables with null gold code"))
+        console.print(f"[yellow]Missing:  {missing} variables present in gold but absent from coded output[/yellow]")
+    console.print(f"[dim]Skipped:  {len(gold_raw) - total} variables with null gold code[/dim]")
 
 
 def main() -> None:
