@@ -281,7 +281,7 @@ def code_section(
     messages.append({"role": "assistant", "content": json.dumps({"codings": clean_codings(codings)}, indent=2)})
     messages.append({"role": "user", "content": review_msg})
     text2 = llm_stream(messages, model, is_anthropic, api_base)
-    Path(f"{pdf_stem}.txt").write_text(text2, encoding="utf-8")
+    (out_dir / f"{pdf_stem}.txt").write_text(text2, encoding="utf-8")
     codings = parse_codings(text2) or []
 
     clean = clean_codings(codings)
