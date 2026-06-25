@@ -22,17 +22,16 @@ LiteLLM model string, e.g.:
     openai/gpt-4o
 
 Usage:
-    python code_traits.py docs/buck1952.pdf
+    python code_traits.py docs/buck1952.pdf --model claude-opus-4-8
     python code_traits.py docs/buck1952.pdf --model ollama/llama3.2
     python code_traits.py docs/buck1952.pdf --model lm_studio/gemma-4-e4b --api-base http://localhost:1234/v1
-    python code_traits.py docs/buck1952.pdf --section "Supernatural Beings"
+    python code_traits.py docs/buck1952.pdf --model claude-opus-4-8 --section "Supernatural Beings"
 """
 
 import argparse
 import csv
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pymupdf
@@ -40,47 +39,19 @@ import logging
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 import litellm
 
-TRAITS_DIR = Path("./traits")
-VARIABLES_CSV = TRAITS_DIR / "variables.csv"
-CODES_CSV = TRAITS_DIR / "codes.csv"
-
-SYSTEM_PROMPT = """
-You are an expert ethnographer coding source documents for the Pulotu Database of Pacific Religions.
-
-You will receive a source document followed by a list of cultural trait variables to code.
-
-TASK: For each variable, read the document carefully and assign the most appropriate code.
-
-RULES:
-- Base every coding on direct evidence from the document.
-- Use the exact code values listed — do not invent new codes.
-- Set confidence to "absent" when the document contains no relevant evidence.
-- Keep justifications to one or two sentences and cite specific evidence.
-- You MUST code every variable listed, even if evidence is absent.
-
-OUTPUT FORMAT: Respond with a single JSON object and nothing else — no explanation, no markdown, no code fences. 
-
-The JSON must have this exact structure:
-
-{
-  "codings": [
-    {
-      "id": "<variable ID>",
-      "code": "<assigned code or integer or text value>",
-      "confidence": "high" | "medium" | "low" | "absent",
-      "justification": "<one or two sentences citing evidence>"
-    }
-  ]
-}
-
-Your entire response must be valid JSON starting with { and ending with }.
-
-"""
+PROMPT_FILE = Path('.') / "PROMPT.md"
+VARIABLES_CSV = Path('.') / "variables.csv"
+CODES_CSV = Path('.') / "codes.csv"
 
 
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
+
+def load_prompt(path: Path) -> str:
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
 
 def load_variables(path: Path) -> list[dict]:
     with open(path, encoding="utf-8") as f:
@@ -133,7 +104,7 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
 
         var_id = var["ID"]
         datatype = var["Datatype"]
-        name = var.get("Simplified_Name") or var["Name"]
+        name = var["Name"]
         description = (var.get("Description") or "").strip()
 
         lines.append(f"ID {var_id}: {name}")
@@ -210,12 +181,12 @@ def validate_option_codes(
 
 def build_review_message(
     codings: list[dict],
-    codes_by_var: dict[str, list[dict]],
-    variables: list[dict],
 ) -> tuple[str | None, int, int]:
-    """Build a review prompt for invalid or low-confidence codings.
+    """
+    Build a review prompt for invalid or low-confidence codings.
 
     Returns (review_message, n_invalid, n_low_confidence).
+    
     Returns (None, 0, 0) if no review is needed.
     """
     invalid = [c for c in codings if c.get("_invalid")]
@@ -251,7 +222,7 @@ def llm_stream(
     """Make a streaming LLM call and return stripped response text."""
     msgs = messages[:]
 
-    kwargs: dict = {"stream": True, "temperature": 0}
+    kwargs: dict = {"stream": True}
     if not is_anthropic and not model.startswith("lm_studio/"):
         kwargs["response_format"] = {"type": "json_object"}
     if api_base:
@@ -263,8 +234,7 @@ def llm_stream(
         delta = chunk.choices[0].delta.content or ""
         if delta:
             chunks.append(delta)
-            print(delta, end="", flush=True)
-    print()
+            #print(delta, end="", flush=True)
     return strip_fences("".join(chunks))
 
 
@@ -277,8 +247,10 @@ def code_section(
     is_anthropic: bool,
     messages: list[dict],
     pdf_prefix: str = "",
+    out_dir: Path = Path("."),
 ) -> list[dict]:
-    """Code one batch of variables, with validation and review pass.
+    """
+    Code one batch of variables, with validation and review pass.
 
     Appends turns to `messages` in place. Pass `pdf_prefix` (the document text
     header) for the first call only; subsequent calls in a multi-turn session
@@ -290,12 +262,12 @@ def code_section(
 
     # Initial coding
     text = llm_stream(messages, model, is_anthropic, api_base)
-    Path(f"{pdf_stem}.txt").write_text(text, encoding="utf-8")
+    (out_dir / f"{pdf_stem}.txt").write_text(text, encoding="utf-8")
     codings = parse_codings(text) or []
 
     # Validate option codes and identify low-confidence items
     codings = validate_option_codes(codings, codes_by_var, variables)
-    review_msg, n_invalid, n_low = build_review_message(codings, codes_by_var, variables)
+    review_msg, n_invalid, n_low = build_review_message(codings)
 
     if review_msg is None:
         clean = clean_codings(codings)
@@ -318,9 +290,9 @@ def code_section(
 
 
 def model_dirname(model: str) -> str:
-    """Convert a LiteLLM model string to a safe directory name.
+    """Convert a model string to a safe directory name.
 
-    'ollama/llama3.2'          → 'llama3.2'
+    'ollama/llama3.2'           → 'llama3.2'
     'anthropic/claude-opus-4-6' → 'claude-opus-4-6'
     'claude-opus-4-6'           → 'claude-opus-4-6'
     """
@@ -352,12 +324,16 @@ def code_pdf(
     by_section: bool = False,
 ) -> list[dict]:
     """Extract PDF text and code variables, returning a list of coding dicts."""
+    if model is None:
+        sys.exit("Error: --model is required")
     print(f"Extracting text from {pdf_path.name} ({pdf_path.stat().st_size / 1e6:.1f} MB)…", file=sys.stderr)
     pdf_text = extract_pdf_text(pdf_path, max_chars=max_chars)
     is_anthropic, api_base = resolve_model_config(model, api_base)
 
     pdf_prefix = f"Source document: {pdf_path.stem}\n\n{pdf_text}"
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": load_prompt(PROMPT_FILE)}]
+    out_dir = Path(model_dirname(model))
+    out_dir.mkdir(exist_ok=True)
 
     if by_section:
         sections: dict[str, list[dict]] = {}
@@ -369,7 +345,7 @@ def code_pdf(
             print(f"  [{section_name}] — {len(section_vars)} variables…", file=sys.stderr)
             for c in code_section(
                 pdf_path.stem, section_vars, codes_by_var, model, api_base, is_anthropic,
-                messages, pdf_prefix=pdf_prefix if first else "",
+                messages, pdf_prefix=pdf_prefix if first else "", out_dir=out_dir,
             ):
                 codings_by_id[str(c.get("id", ""))] = c
             first = False
@@ -378,7 +354,7 @@ def code_pdf(
         print(f"Coding {pdf_path.name} ({len(variables)} variables) with {model}…", file=sys.stderr)
         return code_section(
             pdf_path.stem, variables, codes_by_var, model, api_base, is_anthropic,
-            messages, pdf_prefix=pdf_prefix,
+            messages, pdf_prefix=pdf_prefix, out_dir=out_dir,
         )
 
 
@@ -392,61 +368,47 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    subparsers = parser.add_subparsers(dest="command")
-
-    # --- show subcommand ---
-    show_parser = subparsers.add_parser("show", help="Print extracted text from a PDF")
-    show_parser.add_argument("pdf", help="PDF file to inspect")
-    show_parser.add_argument(
-        "--max-chars",
-        type=int,
-        default=None,
-        help="Truncate output to this many characters",
-    )
-
-    # --- code subcommand (default) ---
-    code_parser = subparsers.add_parser("code", help="Code a PDF for cultural traits")
-    code_parser.add_argument("pdf", help="PDF file to code")
-    code_parser.add_argument(
+    parser.add_argument("pdf", help="PDF file to code")
+    parser.add_argument(
         "--model", "-m",
         default=None,
-        help=f"LiteLLM model string",
+        help="LiteLLM model string",
     )
-    code_parser.add_argument(
+    parser.add_argument(
         "--variables",
-        default=str(VARIABLES_CSV),
+        default=str(Path('.') / "variables.csv"),
         help=f"Variables CSV (default: {VARIABLES_CSV})",
     )
-    code_parser.add_argument(
+    parser.add_argument(
         "--codes",
-        default=str(CODES_CSV),
+        default=str(Path('.') / "codes.csv"),
         help=f"Codes CSV (default: {CODES_CSV})",
     )
-    code_parser.add_argument(
+    parser.add_argument(
         "--section",
         help="Only code variables in this section (substring match)",
     )
-    code_parser.add_argument(
+    parser.add_argument(
         "--ids",
         help="Comma-separated list of variable IDs to code (e.g. 2,3,5)",
     )
-    code_parser.add_argument(
+    parser.add_argument(
         "--api-base",
         default=None,
         help="Override API base URL (e.g. http://localhost:1234/v1 for LM Studio)",
     )
-    code_parser.add_argument(
+    parser.add_argument(
         "--max-chars",
         type=int,
         default=None,
         help="Truncate PDF text to this many characters (useful for small context windows)",
     )
-    code_parser.add_argument(
+    parser.add_argument(
         "--by-section",
         action="store_true",
         help="Code variables section by section (separate LLM call per section, more focused)",
     )
-    code_parser.add_argument(
+    parser.add_argument(
         "--print-prompt",
         action="store_true",
         help="Print the system prompt and coding prompt to stdout, then exit",
@@ -454,23 +416,6 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Default to 'code' when no subcommand given (backwards compat)
-    if args.command is None:
-        parser.print_help()
-        sys.exit(1)
-
-    # --- handle show ---
-    if args.command == "show":
-        pdf_path = Path(args.pdf)
-        if not pdf_path.exists():
-            sys.exit(f"Error: {pdf_path} not found")
-        text = extract_pdf_text(pdf_path, max_chars=args.max_chars)
-        tokens = litellm.token_counter(model="gpt-3.5-turbo", text=text)
-        print(f"=== {pdf_path.name} — {len(text):,} chars, ~{tokens:,} tokens ===\n", file=sys.stderr)
-        print(text)
-        return
-
-    # --- handle code ---
     pdf_path = Path(args.pdf)
     if not pdf_path.exists():
         sys.exit(f"Error: {pdf_path} not found")
@@ -500,7 +445,7 @@ def main() -> None:
     if args.print_prompt:
         coding_prompt = build_coding_prompt(variables, codes_by_var)
         print("=" * 60, "SYSTEM PROMPT", "=" * 60)
-        print(SYSTEM_PROMPT)
+        print(load_prompt(PROMPT_FILE))
         print("=" * 60, "CODING PROMPT", "=" * 60)
         print(coding_prompt)
         return
@@ -515,9 +460,7 @@ def main() -> None:
         by_section=args.by_section,
     )
 
-    out_dir = Path(model_dirname(args.model))
-    out_dir.mkdir(exist_ok=True)
-    json_path = out_dir / f"{pdf_path.stem}.json"
+    json_path = Path(model_dirname(args.model)) / f"{pdf_path.stem}.json"
     json_path.write_text(json.dumps({"codings": codings}, indent=2), encoding="utf-8")
     print(f"JSON saved → {json_path}", file=sys.stderr)
 

@@ -3,7 +3,7 @@
 # requires-python = ">=3.12,<3.14"
 # ///
 """
-Extract 'gold' codings from the DPLACE Pulotu CLDF dataset.
+Extract 'gold' codings from a CLDF dataset.
 
 For each source document referenced in data.csv, writes a JSON file containing
 all variables with their coded values (null if not coded for that source).
@@ -30,7 +30,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-CLDF_DIR = Path("./dplace-dataset-pulotu/cldf")
+CLDF_DIR = Path("./dataset/cldf")
 VARIABLES_CSV = CLDF_DIR / "variables.csv"
 CODES_CSV = CLDF_DIR / "codes.csv"
 DATA_CSV = CLDF_DIR / "data.csv"
@@ -102,16 +102,19 @@ def codings_for_source(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Extract gold codings from DPLACE Pulotu CLDF",
+        description="Extract gold codings from a CLDF",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("-s", "--source", metavar="KEY",
-                        help="Extract only this source key (e.g. buck1952)")
-    parser.add_argument("-o", "--output", default="gold",
-                        help="Output directory (default: gold/)")
-    parser.add_argument("--list", action="store_true",
-                        help="List all source keys and exit")
+    parser.add_argument(
+        "-s", "--source", metavar="KEY",
+        help="Extract only this source key (e.g. buck1952)")
+    parser.add_argument(
+        "-o", "--output", default="gold",
+        help="Output directory (default: gold/)")
+    parser.add_argument(
+        "--list", action="store_true",
+        help="List all source keys and exit")
     args = parser.parse_args()
 
     all_variables = load_variables(VARIABLES_CSV)

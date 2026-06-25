@@ -38,8 +38,7 @@ CONF_COLOUR = {
     "absent": red,
 }
 
-TRAITS_DIR = Path("./traits")
-VARIABLES_CSV = TRAITS_DIR / "variables.csv"
+VARIABLES_CSV = Path("./variables.csv")
 GOLD_DIR = Path("./gold")
 
 def strip_fences(text: str) -> str:
@@ -82,7 +81,7 @@ def eval_codings(gold_path: Path, coded_path: Path, variables_path: Path) -> Non
     var_names: dict[str, str] = {}
     with open(variables_path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            var_names[row["ID"]] = row.get("Simplified_Name") or row["Name"]
+            var_names[row["ID"]] = row["Name"]
 
     # Index gold by id; skip nulls
     gold: dict[str, str] = {

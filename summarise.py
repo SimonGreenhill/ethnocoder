@@ -34,19 +34,19 @@ def convert(alist):
 
 def compare(gold, code):
     same, diff = 0, 0
-    for i in range(1, 89):
+    for i in gold:
         if gold[i] is None:
             continue
-        elif str(gold[i]) == str(code[i]):
-            same += 1
-        else:
+        elif i not in code or str(gold[i]) != str(code[i]):
             diff += 1
+        else:
+            same += 1
     return (same, same + diff)
 
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='Does something.')
+    parser = argparse.ArgumentParser(description='Compare coded JSON outputs against gold standard')
     parser.add_argument("modeldir", help='modeldir', type=Path)
     args = parser.parse_args()
     
