@@ -45,6 +45,7 @@ def find_metadata(dataset_dir: Path) -> Path:
     return cldf_matches[0] if cldf_matches else matches[0]
 
 
+
 def build_source_index(ds: pycldf.Dataset) -> dict[str, list[dict]]:
     index: dict[str, list[dict]] = defaultdict(list)
     for row in ds["ValueTable"]:
@@ -95,12 +96,11 @@ def main() -> None:
 
     metadata_path = find_metadata(args.dataset)
     ds = pycldf.Dataset.from_metadata(metadata_path)
-    cldf_dir = metadata_path.parent
 
     if not args.list:
-        for name in ("variables.csv", "codes.csv"):
-            src = cldf_dir / name
-            dst = Path(name)
+        for table in (ds["ParameterTable"], ds["CodeTable"]):
+            src = ds.directory / table.url.string
+            dst = Path(src.name)
             shutil.copy2(src, dst)
             print(f"Copied {src} → {dst}")
 
