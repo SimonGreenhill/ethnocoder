@@ -26,7 +26,7 @@ from code_traits import (
     validate_option_codes,
 )
 from evaluate import load_codings, load_codings_as_dict, normalize_code
-from setup_dataset import parse_sources, strip_pages
+from setup_dataset import strip_pages
 
 
 # ---------------------------------------------------------------------------
@@ -325,19 +325,6 @@ class TestStripPages:
     def test_whitespace(self):
         assert strip_pages("  buck1952[39]  ") == "buck1952"
 
-
-class TestParseSources:
-    def test_single(self):
-        assert parse_sources("buck1952[39-41]") == ["buck1952"]
-
-    def test_multiple(self):
-        assert parse_sources("buck1952[39];smith2000[1-5]") == ["buck1952", "smith2000"]
-
-    def test_empty(self):
-        assert parse_sources("") == []
-
-    def test_whitespace_entries(self):
-        assert parse_sources("buck1952; ;smith2000") == ["buck1952", "smith2000"]
 
 
 if __name__ == "__main__":

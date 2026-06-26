@@ -2,9 +2,9 @@
 """
 Set up working files from a CLDF dataset.
 
-Copies variables.csv and codes.csv from the CLDF directory into the project
-root, creates a gold/ directory, and extracts gold-standard codings for each
-source document referenced in the CLDF data.csv.
+Uses pycldf to discover and read the dataset, copies variables.csv and
+codes.csv into the project root, creates a gold/ directory, and extracts
+gold-standard codings for each source document referenced in the data.
 
 Output format per gold file:
     [
@@ -14,13 +14,12 @@ Output format per gold file:
     ]
 
 Usage:
-    python setup_dataset.py                          # default CLDF dir
-    python setup_dataset.py --cldf-dir path/to/cldf
-    python setup_dataset.py --list                   # list all source keys
+    python setup_dataset.py                         # default dataset dir
+    python setup_dataset.py --dataset path/to/dataset
+    python setup_dataset.py --list                  # list all source keys
 """
 
 import argparse
-import csv
 import json
 import re
 import shutil
@@ -28,7 +27,9 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-CLDF_DIR = Path("./dataset/cldf")
+import pycldf
+
+DATASET_DIR = Path("./dataset")
 
 
 def strip_pages(source_key: str) -> str:
@@ -36,32 +37,21 @@ def strip_pages(source_key: str) -> str:
     return re.sub(r"\[.*?\]", "", source_key).strip()
 
 
-def parse_sources(source_field: str) -> list[str]:
-    if not source_field:
-        return []
-    return [strip_pages(s) for s in source_field.split(";") if s.strip()]
+def find_metadata(dataset_dir: Path) -> Path:
+    matches = list(dataset_dir.rglob("*-metadata.json"))
+    if not matches:
+        sys.exit(f"Error: no CLDF *-metadata.json found under {dataset_dir}")
+    cldf_matches = [m for m in matches if m.parent.name == "cldf"]
+    return cldf_matches[0] if cldf_matches else matches[0]
 
 
-def load_csv(path: Path) -> list[dict]:
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def load_code_names(path: Path) -> dict[str, str]:
-    """Returns map of Code_ID → Name (the short code value)."""
-    codes = {}
-    with open(path, encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            codes[row["ID"]] = row["Name"]
-    return codes
-
-
-def build_source_index(data_rows: list[dict]) -> dict[str, list[dict]]:
+def build_source_index(ds: pycldf.Dataset) -> dict[str, list[dict]]:
     index: dict[str, list[dict]] = defaultdict(list)
-    for row in data_rows:
-        for src in parse_sources(row["Source"]):
-            if src:
-                index[src].append(row)
+    for row in ds["ValueTable"]:
+        for src in row["Source"]:
+            key = strip_pages(src)
+            if key:
+                index[key].append(row)
     return index
 
 
@@ -76,7 +66,7 @@ def codings_for_source(
         if row["Code_ID"]:
             by_param[param_id] = code_names.get(row["Code_ID"], row["Code_ID"])
         elif row["Value"] not in ("", None):
-            by_param[param_id] = row["Value"]
+            by_param[param_id] = str(row["Value"])
         else:
             by_param[param_id] = None
 
@@ -93,8 +83,8 @@ def main() -> None:
         epilog=__doc__,
     )
     parser.add_argument(
-        "--cldf-dir", type=Path, default=CLDF_DIR,
-        help=f"Path to CLDF directory (default: {CLDF_DIR})")
+        "--dataset", type=Path, default=DATASET_DIR,
+        help=f"Path to dataset root (default: {DATASET_DIR})")
     parser.add_argument(
         "-o", "--output", default="gold",
         help="Output directory for gold files (default: gold/)")
@@ -103,28 +93,26 @@ def main() -> None:
         help="List all source keys and exit")
     args = parser.parse_args()
 
-    cldf = args.cldf_dir
-    for name in ("variables.csv", "codes.csv", "data.csv"):
-        if not (cldf / name).exists():
-            sys.exit(f"Error: {cldf / name} not found")
+    metadata_path = find_metadata(args.dataset)
+    ds = pycldf.Dataset.from_metadata(metadata_path)
+    cldf_dir = metadata_path.parent
 
-    # Copy variables.csv and codes.csv to project root
     if not args.list:
         for name in ("variables.csv", "codes.csv"):
-            src = cldf / name
+            src = cldf_dir / name
             dst = Path(name)
             shutil.copy2(src, dst)
             print(f"Copied {src} → {dst}")
 
-    all_variables = load_csv(cldf / "variables.csv")
-    code_names = load_code_names(cldf / "codes.csv")
-    data_rows = load_csv(cldf / "data.csv")
-    source_index = build_source_index(data_rows)
+    all_variables = list(ds["ParameterTable"])
+    code_names = {row["ID"]: row["Name"] for row in ds["CodeTable"]}
+    source_index = build_source_index(ds)
 
     if args.list:
         for key in sorted(source_index):
-            n_params = len({r["Parameter_ID"] for r in source_index[key]})
-            n_societies = len({r["Language_ID"] for r in source_index[key]})
+            rows = source_index[key]
+            n_params = len({r["Parameter_ID"] for r in rows})
+            n_societies = len({r["Language_ID"] for r in rows})
             print(f"{key:40s}  {n_params:3d} params  {n_societies:3d} societies")
         print(f"\nTotal: {len(source_index)} sources", file=sys.stderr)
         return
