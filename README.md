@@ -36,11 +36,11 @@ python setup_dataset.py
 ```
 
 This will:
-- Copy `dataset/cldf/variables.csv` → `variables.csv`
-- Copy `dataset/cldf/codes.csv` → `codes.csv`
+- Copy the ParameterTable → `parameters.csv`
+- Copy the CodeTable → `codes.csv`
 - Create `gold/` and write one gold JSON file per source document
 
-Edit variables.csv or codes.csv if you want to remove certain variables or codes etc.
+Edit parameters.csv or codes.csv if you want to remove certain variables or codes etc.
 
 6. Edit the system prompt file `PROMPT.md` to make any changes you want.
 
@@ -118,7 +118,7 @@ evaluate.py         Per-variable comparison of coded output vs gold standard
 summarise.py        Aggregate accuracy summary across documents for a model
 setup_dataset.py    Copies variables/codes from CLDF and extracts gold codings
 check_pdf.py        Document statistics (pages, chars, coded variables)
-variables.csv       Variable definitions
+parameters.csv      Variable definitions
 codes.csv           Valid code values for option-type variables
 gold/               Gold-standard codings (one JSON per source document)
 docs/               PDF source documents

@@ -2,7 +2,7 @@
 """
 Code a PDF source document for cultural traits using an LLM.
 
-Reads variables from ./variables.csv and valid codes from ./codes.csv,
+Reads variables from ./parameters.csv and valid codes from ./codes.csv,
 then prompts the model to assign the most appropriate code for each variable based
 on the content of a PDF source document. Results are saved to
 <model_name>/<pdf_stem>.json.
@@ -33,7 +33,7 @@ logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 import litellm
 
 PROMPT_FILE = Path('.') / "PROMPT.md"
-VARIABLES_CSV = Path('.') / "variables.csv"
+PARAMETERS_CSV = Path('.') / "parameters.csv"
 CODES_CSV = Path('.') / "codes.csv"
 
 
@@ -366,8 +366,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--variables",
-        default=str(Path('.') / "variables.csv"),
-        help=f"Variables CSV (default: {VARIABLES_CSV})",
+        default=str(Path('.') / "parameters.csv"),
+        help=f"Variables CSV (default: {PARAMETERS_CSV})",
     )
     parser.add_argument(
         "--codes",

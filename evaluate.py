@@ -28,7 +28,7 @@ CONF_STYLE = {
     "absent": "red",
 }
 
-VARIABLES_CSV = Path("./variables.csv")
+PARAMETERS_CSV = Path("./parameters.csv")
 GOLD_DIR = Path("./gold")
 
 def strip_fences(text: str) -> str:
@@ -163,8 +163,8 @@ def main() -> None:
     parser.add_argument("doc", help="Coded JSON file")
     parser.add_argument(
         "--variables",
-        default=str(VARIABLES_CSV),
-        help=f"Variables CSV for names (default: {VARIABLES_CSV})",
+        default=str(PARAMETERS_CSV),
+        help=f"Variables CSV for names (default: {PARAMETERS_CSV})",
     )
 
     args = parser.parse_args()

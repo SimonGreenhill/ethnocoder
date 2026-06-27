@@ -2,8 +2,9 @@
 """
 Set up working files from a CLDF dataset.
 
-Uses pycldf to discover and read the dataset, copies variables.csv and
-codes.csv into the project root, creates a gold/ directory, and extracts
+Uses pycldf to discover and read the dataset, copies the ParameterTable as
+parameters.csv and the CodeTable as codes.csv into the project root, creates
+a gold/ directory, and extracts
 gold-standard codings for each source document referenced in the data.
 
 Output format per gold file:
@@ -98,9 +99,12 @@ def main() -> None:
     ds = pycldf.Dataset.from_metadata(metadata_path)
 
     if not args.list:
-        for table in (ds["ParameterTable"], ds["CodeTable"]):
+        for table, dst_name in (
+            (ds["ParameterTable"], "parameters.csv"),
+            (ds["CodeTable"], "codes.csv"),
+        ):
             src = ds.directory / table.url.string
-            dst = Path(src.name)
+            dst = Path(dst_name)
             shutil.copy2(src, dst)
             print(f"Copied {src} → {dst}")
 
