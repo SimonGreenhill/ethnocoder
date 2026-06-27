@@ -403,6 +403,11 @@ def main() -> None:
         action="store_true",
         help="Print the system prompt and coding prompt to stdout, then exit",
     )
+    parser.add_argument(
+        "--dump",
+        action="store_true",
+        help="Dump the full messages list (as JSON) that would be sent to the LLM, then exit",
+    )
 
     args = parser.parse_args()
 
@@ -438,6 +443,26 @@ def main() -> None:
         print(load_prompt(PROMPT_FILE))
         print("=" * 60, "CODING PROMPT", "=" * 60)
         print(coding_prompt)
+        return
+
+    if args.dump:
+        pdf_text = extract_pdf_text(pdf_path, max_chars=args.max_chars)
+        pdf_prefix = f"Source document: {pdf_path.stem}\n\n{pdf_text}"
+        messages: list[dict] = [{"role": "system", "content": load_prompt(PROMPT_FILE)}]
+        if args.by_section:
+            sections: dict[str, list[dict]] = {}
+            for v in variables:
+                sections.setdefault(v.get("Section", ""), []).append(v)
+            first = True
+            for section_vars in sections.values():
+                coding_prompt = build_coding_prompt(section_vars, codes_by_var)
+                user_content = f"{pdf_prefix}\n\n---\n\n{coding_prompt}" if first else coding_prompt
+                messages.append({"role": "user", "content": user_content})
+                first = False
+        else:
+            coding_prompt = build_coding_prompt(variables, codes_by_var)
+            messages.append({"role": "user", "content": f"{pdf_prefix}\n\n---\n\n{coding_prompt}"})
+        print(json.dumps(messages, indent=2))
         return
 
     codings = code_pdf(

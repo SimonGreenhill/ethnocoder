@@ -25,7 +25,8 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export OPENAI_API_KEY="sk-..."
 ```
 
-3. Place PDF source documents in `docs/`.
+3. Place PDF source documents in `docs/`. 
+NOTE: These need to be named by bibtex citation key i.e. "hv_vanderVeen_B30.pdf" or "s_Peckham_Mairasi_2000.pdf"
 
 4. Put CLDF dataset into `./dataset` (make sure `./dataset/cldf/*-metadata.json` exists).
 
