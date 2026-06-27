@@ -96,7 +96,7 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
             current_section = section
 
         var_id = var["ID"]
-        datatype = var["Datatype"]
+        datatype = var.get("Datatype") or "Option"
         name = var["Name"]
         description = (var.get("Description") or "").strip()
 
@@ -157,7 +157,7 @@ def validate_option_codes(
     variables: list[dict],
 ) -> list[dict]:
     """Return codings with invalid option codes annotated (adds '_invalid' and '_valid_codes' keys)."""
-    option_vars = {v["ID"] for v in variables if v["Datatype"] == "Option"}
+    option_vars = {v["ID"] for v in variables if v.get("Datatype", "Option") == "Option"}
     valid: dict[str, set[str]] = {
         vid: {c["Name"] for c in codes}
         for vid, codes in codes_by_var.items()
@@ -430,7 +430,7 @@ def main() -> None:
         if not variables:
             sys.exit(f"No variables found with IDs: {args.ids}")
 
-    option_count = sum(1 for v in variables if v["Datatype"] == "Option")
+    option_count = sum(1 for v in variables if v.get("Datatype", "Option") == "Option")
     print(
         f"Loaded {len(variables)} variables ({option_count} option-type) "
         f"from {args.variables}",
