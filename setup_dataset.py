@@ -8,8 +8,8 @@ gold-standard codings for each source document referenced in the data.
 
 Output format per gold file:
     [
-        {"id": 2, "code": "0"},
-        {"id": 3, "code": null},
+        {"id": "2", "code": "0"},
+        {"id": "3", "code": null},
         ...
     ]
 
@@ -72,7 +72,7 @@ def codings_for_source(
             by_param[param_id] = None
 
     return [
-        {"id": int(var["ID"]), "code": by_param.get(var["ID"])}
+        {"id": var["ID"], "code": by_param.get(var["ID"])}
         for var in all_variables
     ]
 
