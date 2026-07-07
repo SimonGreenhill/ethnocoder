@@ -32,6 +32,8 @@ import logging
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 import litellm
 
+from utils import strip_fences, parse_codings
+
 PROMPT_FILE = Path('.') / "PROMPT.md"
 PARAMETERS_CSV = Path('.') / "parameters.csv"
 CODES_CSV = Path('.') / "codes.csv"
@@ -129,26 +131,6 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
 def clean_codings(codings: list[dict]) -> list[dict]:
     """Remove internal annotation keys (those starting with '_') from codings."""
     return [{k: v for k, v in c.items() if not k.startswith("_")} for c in codings]
-
-
-def strip_fences(text: str) -> str:
-    """Strip markdown code fences that models add despite instructions."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = text[text.index("\n") + 1:]  # remove opening fence line
-    if text.endswith("```"):
-        text = text[:text.rindex("```")]
-    return text.strip()
-
-
-def parse_codings(text: str) -> list[dict]:
-    """Parse an LLM response into a list of coding dicts."""
-    if text.startswith("{{"):
-        text = text[1:]
-    raw = json.loads(text)
-    if isinstance(raw, dict) and "raw_response" in raw and "codings" not in raw:
-        raw = json.loads(strip_fences(raw["raw_response"]))
-    return raw if isinstance(raw, list) else raw.get("codings", [])
 
 
 def validate_option_codes(

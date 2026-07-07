@@ -16,9 +16,10 @@
 
 | Action | Path | From |
 |--------|------|------|
-| Create | `pyproject.toml` | replaces `requirements.txt` |
+| Create | `pyproject.toml` | replaces `requirements.txt` (already deleted) |
 | Create | `src/ethnocoder/__init__.py` | new |
 | Create | `src/ethnocoder/cli.py` | new |
+| Create | `src/ethnocoder/utils.py` | `utils.py` (already exists) |
 | Create | `src/ethnocoder/code.py` | `code_traits.py` |
 | Create | `src/ethnocoder/batch.py` | `run_batch.py` |
 | Create | `src/ethnocoder/evaluate.py` | `evaluate.py` |
@@ -29,7 +30,7 @@
 | Create | `src/ethnocoder/data/__init__.py` | new |
 | Create | `src/ethnocoder/data/PROMPT.md` | moved from `PROMPT.md` |
 | Modify | `tests.py` | update import paths |
-| Delete | `code_traits.py`, `run_batch.py`, `evaluate.py`, `summarise.py`, `setup_dataset.py`, `check_pdf.py` | after tests pass |
+| Delete | `code_traits.py`, `run_batch.py`, `evaluate.py`, `summarise.py`, `setup_dataset.py`, `check_pdf.py`, `utils.py` | after tests pass |
 
 ---
 
@@ -109,7 +110,29 @@ git commit -m "feat: scaffold src/ethnocoder package with pyproject.toml"
 
 ---
 
-## Task 2: Create `src/ethnocoder/code.py`
+## Task 2: Create `src/ethnocoder/utils.py`
+
+Shared utilities used by both `code.py` and `evaluate.py`. Already exists as `utils.py` in the root — just move it into the package.
+
+**Files:**
+- Create: `src/ethnocoder/utils.py` (move from `utils.py`)
+
+- [ ] **Step 1: Copy `utils.py` into the package**
+
+```bash
+cp utils.py src/ethnocoder/utils.py
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/ethnocoder/utils.py
+git commit -m "feat: add ethnocoder.utils (strip_fences, parse_codings)"
+```
+
+---
+
+## Task 3: Create `src/ethnocoder/code.py`
 
 Move all logic from `code_traits.py`. Replace `main()` with `add_subparser()` + `_run()`.
 
@@ -129,6 +152,8 @@ import pymupdf
 import logging
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 import litellm
+
+from ethnocoder.utils import strip_fences, parse_codings
 
 PROMPT_FILE = Path('.') / "PROMPT.md"
 PARAMETERS_CSV = Path('.') / "parameters.csv"
@@ -212,24 +237,6 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
 
 def clean_codings(codings: list[dict]) -> list[dict]:
     return [{k: v for k, v in c.items() if not k.startswith("_")} for c in codings]
-
-
-def strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text[text.index("\n") + 1:]
-    if text.endswith("```"):
-        text = text[:text.rindex("```")]
-    return text.strip()
-
-
-def parse_codings(text: str) -> list[dict]:
-    if text.startswith("{{"):
-        text = text[1:]
-    raw = json.loads(text)
-    if isinstance(raw, dict) and "raw_response" in raw and "codings" not in raw:
-        raw = json.loads(strip_fences(raw["raw_response"]))
-    return raw if isinstance(raw, list) else raw.get("codings", [])
 
 
 def validate_option_codes(
@@ -505,13 +512,14 @@ Move all logic from `evaluate.py`. Replace `main()` with `add_subparser()` + `_r
 ```python
 import argparse
 import csv
-import json
 import sys
 from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+
+from ethnocoder.utils import strip_fences, parse_codings
 
 console = Console()
 
@@ -524,15 +532,6 @@ CONF_STYLE = {
 
 PARAMETERS_CSV = Path("./parameters.csv")
 GOLD_DIR = Path("./gold")
-
-
-def strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text[text.index("\n") + 1:]
-    if text.endswith("```"):
-        text = text[:text.rindex("```")]
-    return text.strip()
 
 
 def normalize_code(value) -> str:
@@ -549,15 +548,7 @@ def normalize_code(value) -> str:
 
 
 def load_codings(path: Path) -> list[dict]:
-    text = strip_fences(path.read_text(encoding="utf-8"))
-    if text.startswith("{{"):
-        text = text[1:]
-    raw = json.loads(text)
-    if isinstance(raw, dict) and "raw_response" in raw and "codings" not in raw:
-        raw = json.loads(strip_fences(raw["raw_response"]))
-    if isinstance(raw, list):
-        return raw
-    return raw.get("codings", [])
+    return parse_codings(strip_fences(path.read_text(encoding="utf-8")))
 
 
 def load_codings_as_dict(path: Path) -> dict[str, str]:
@@ -1310,7 +1301,7 @@ git commit -m "feat: add ethnocoder.cli entrypoint, wire all subcommands"
 Only delete after all tests pass and the CLI is verified.
 
 **Files:**
-- Delete: `code_traits.py`, `run_batch.py`, `evaluate.py`, `summarise.py`, `setup_dataset.py`, `check_pdf.py`
+- Delete: `code_traits.py`, `run_batch.py`, `evaluate.py`, `summarise.py`, `setup_dataset.py`, `check_pdf.py`, `utils.py`
 
 - [ ] **Step 1: Run full test suite one last time before deleting**
 
@@ -1323,7 +1314,7 @@ Expected: all tests pass.
 - [ ] **Step 2: Delete old scripts**
 
 ```bash
-git rm code_traits.py run_batch.py evaluate.py summarise.py setup_dataset.py check_pdf.py
+git rm code_traits.py run_batch.py evaluate.py summarise.py setup_dataset.py check_pdf.py utils.py
 ```
 
 - [ ] **Step 3: Run tests again to confirm nothing broke**

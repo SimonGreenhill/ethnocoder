@@ -11,13 +11,14 @@ Usage:
 
 import argparse
 import csv
-import json
 import sys
 from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+
+from utils import strip_fences, parse_codings
 
 console = Console()
 
@@ -30,16 +31,6 @@ CONF_STYLE = {
 
 PARAMETERS_CSV = Path("./parameters.csv")
 GOLD_DIR = Path("./gold")
-
-def strip_fences(text: str) -> str:
-    """Strip markdown code fences that models add despite instructions."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = text[text.index("\n") + 1:]
-    if text.endswith("```"):
-        text = text[:text.rindex("```")]
-    return text.strip()
-
 
 def normalize_code(value) -> str:
     """Normalize a code value to a canonical string for comparison."""
@@ -57,15 +48,7 @@ def normalize_code(value) -> str:
 
 def load_codings(path: Path) -> list[dict]:
     """Load a codings JSON file, handling format variants."""
-    text = strip_fences(path.read_text(encoding="utf-8"))
-    if text.startswith("{{"):
-        text = text[1:]
-    raw = json.loads(text)
-    if isinstance(raw, dict) and "raw_response" in raw and "codings" not in raw:
-        raw = json.loads(strip_fences(raw["raw_response"]))
-    if isinstance(raw, list):
-        return raw
-    return raw.get("codings", [])
+    return parse_codings(strip_fences(path.read_text(encoding="utf-8")))
 
 
 def load_codings_as_dict(path: Path) -> dict[str, str]:

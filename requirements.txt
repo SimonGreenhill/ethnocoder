@@ -1,5 +1,0 @@
-litellm
-pycldf
-pymupdf
-pytest
-rich
