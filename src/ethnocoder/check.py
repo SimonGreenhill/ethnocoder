@@ -64,4 +64,4 @@ def _run(args) -> None:
 
     console.print(table)
     if rows:
-        console.print(f"\n{n} documents")
+        console.print(f"\n{len(rows)} documents")
