@@ -1,4 +1,3 @@
-import argparse
 from pathlib import Path
 
 from ethnocoder.evaluate import load_codings_as_dict
