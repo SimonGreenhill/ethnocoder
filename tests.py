@@ -327,5 +327,28 @@ class TestStripPages:
 
 
 
+# ---------------------------------------------------------------------------
+# init: scaffold project
+# ---------------------------------------------------------------------------
+
+class TestInit:
+    def test_creates_prompt_md(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        import argparse
+        from ethnocoder.init import _run
+        _run(argparse.Namespace())
+        assert (tmp_path / "PROMPT.md").exists()
+        assert len((tmp_path / "PROMPT.md").read_text()) > 0
+
+    def test_refuses_to_overwrite(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "PROMPT.md").write_text("custom prompt")
+        import argparse
+        from ethnocoder.init import _run
+        with pytest.raises(SystemExit):
+            _run(argparse.Namespace())
+        assert (tmp_path / "PROMPT.md").read_text() == "custom prompt"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
