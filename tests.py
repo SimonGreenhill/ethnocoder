@@ -17,7 +17,7 @@ sys.modules.setdefault("rich.console", MagicMock())
 sys.modules.setdefault("rich.table", MagicMock())
 sys.modules.setdefault("rich.text", MagicMock())
 
-from code_traits import (
+from ethnocoder.code import (
     build_coding_prompt,
     build_review_message,
     model_dirname,
@@ -25,8 +25,8 @@ from code_traits import (
     strip_fences,
     validate_option_codes,
 )
-from evaluate import load_codings, load_codings_as_dict, normalize_code
-from setup_dataset import strip_pages
+from ethnocoder.evaluate import load_codings, load_codings_as_dict, normalize_code
+from ethnocoder.setup import strip_pages
 
 
 # ---------------------------------------------------------------------------
