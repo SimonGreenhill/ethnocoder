@@ -9,13 +9,15 @@ Automated coding of cultural trait variables from PDF source documents using LLM
 
 ## Setup
 
-1. Create a virtual environment and install dependencies:
+1. Create a virtual environment and install:
 
 ```bash
-python -m venv venv
-source venv/bin/activate        # Linux/macOS
-# venv\Scripts\activate         # Windows
-pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate        # Linux/macOS
+# .venv\Scripts\activate         # Windows
+pip install -e .
+# or include dev dependencies:
+pip install -e ".[dev]"
 ```
 
 2. Set API keys as needed:
@@ -30,10 +32,10 @@ NOTE: These need to be named by bibtex citation key i.e. "hv_vanderVeen_B30.pdf"
 
 4. Put CLDF dataset into `./dataset` (make sure `./dataset/cldf/*-metadata.json` exists).
 
-5. Run the setup script to copy variable/code definitions and extract gold-standard codings:
+5. Run the setup command to copy variable/code definitions and extract gold-standard codings:
 
 ```bash
-python setup_dataset.py
+ethnocoder setup
 ```
 
 This will:
@@ -43,7 +45,13 @@ This will:
 
 Edit parameters.csv or codes.csv if you want to remove certain variables or codes etc.
 
-6. Edit the system prompt file `PROMPT.md` to make any changes you want.
+6. Initialise the project prompt:
+
+```bash
+ethnocoder init   # creates PROMPT.md in the current directory
+```
+
+Edit `PROMPT.md` to customise the system prompt for the LLM.
 
 
 ## Usage
@@ -51,9 +59,9 @@ Edit parameters.csv or codes.csv if you want to remove certain variables or code
 ### Code a single document
 
 ```bash
-python code_traits.py docs/example.pdf --model anthropic/claude-opus-4-8
-python code_traits.py docs/example.pdf --model ollama/llama3.2
-python code_traits.py docs/example.pdf --model lm_studio/gemma-4-e4b --api-base http://localhost:1234/v1
+ethnocoder code docs/example.pdf --model anthropic/claude-opus-4-8
+ethnocoder code docs/example.pdf --model ollama/llama3.2
+ethnocoder code docs/example.pdf --model lm_studio/gemma-4-e4b --api-base http://localhost:1234/v1
 ```
 
 Results are saved to `<model_name>/<pdf_stem>.json`.
@@ -76,8 +84,8 @@ Results are saved to `<model_name>/<pdf_stem>.json`.
 Run all PDFs under a size limit:
 
 ```bash
-python run_batch.py anthropic/claude-opus-4-8 --max-mb 2
-python run_batch.py ollama/llama3.2 --max-mb 5 --dry-run
+ethnocoder batch anthropic/claude-opus-4-8 --max-mb 2
+ethnocoder batch ollama/llama3.2 --max-mb 5 --dry-run
 ```
 
 Already-coded documents are skipped unless `--force` is passed.
@@ -87,19 +95,19 @@ Already-coded documents are skipped unless `--force` is passed.
 Compare a single model output against the gold codings:
 
 ```bash
-python evaluate.py claude-opus-4-8/example.json
+ethnocoder evaluate claude-opus-4-8/example.json
 ```
 
 Summarise accuracy across all documents for a model:
 
 ```bash
-python summarise.py claude-opus-4-8/
+ethnocoder summarise claude-opus-4-8/
 ```
 
 ### Inspect document statistics
 
 ```bash
-python check_pdf.py
+ethnocoder check
 ```
 
 Prints page count, character count, and number of gold-coded variables for each PDF.
@@ -113,12 +121,17 @@ python -m pytest tests.py -v
 ## Project structure
 
 ```
-code_traits.py      Main coding script — extracts PDF text, builds prompts, calls LLM
-run_batch.py        Batch runner for all PDFs in docs/
-evaluate.py         Per-variable comparison of coded output vs gold standard
-summarise.py        Aggregate accuracy summary across documents for a model
-setup_dataset.py    Copies variables/codes from CLDF and extracts gold codings
-check_pdf.py        Document statistics (pages, chars, coded variables)
+src/ethnocoder/     Installable package source
+  cli.py            Entry point — dispatches subcommands
+  code.py           PDF extraction, prompt building, LLM calls
+  batch.py          Batch runner for all PDFs in docs/
+  evaluate.py       Per-variable comparison of coded output vs gold standard
+  summarise.py      Aggregate accuracy summary across documents for a model
+  setup.py          Copies variables/codes from CLDF, extracts gold codings
+  check.py          Document statistics (pages, chars, coded variables)
+  init.py           Project scaffolding (creates PROMPT.md)
+  data/PROMPT.md    Bundled default system prompt
+pyproject.toml      Package metadata and dependencies
 parameters.csv      Variable definitions
 codes.csv           Valid code values for option-type variables
 gold/               Gold-standard codings (one JSON per source document)
