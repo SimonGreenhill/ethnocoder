@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ethnocoder"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["litellm", "pycldf", "pymupdf", "rich"]
+
+[project.scripts]
+ethnocoder = "ethnocoder.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ethnocoder"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
