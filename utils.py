@@ -11,9 +11,9 @@ def strip_fences(text: str) -> str:
 
 
 def parse_codings(text: str) -> list[dict]:
-    """Parse LLM response text into a list of coding dicts.
+    """Parse LLM response text (fences already stripped) into a list of coding dicts.
 
-    Handles: markdown fences, double-brace bug, raw_response wrapper.
+    Handles: double-brace bug, raw_response wrapper.
     """
     if text.startswith("{{"):
         text = text[1:]
