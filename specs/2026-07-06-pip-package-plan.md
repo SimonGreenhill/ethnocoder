@@ -500,7 +500,7 @@ git commit -m "feat: add ethnocoder.code (from code_traits.py)"
 
 ---
 
-## Task 3: Create `src/ethnocoder/evaluate.py`
+## Task 4: Create `src/ethnocoder/evaluate.py`
 
 Move all logic from `evaluate.py`. Replace `main()` with `add_subparser()` + `_run()`.
 
@@ -664,7 +664,7 @@ git commit -m "feat: add ethnocoder.evaluate (from evaluate.py)"
 
 ---
 
-## Task 4: Create `src/ethnocoder/setup.py`
+## Task 5: Create `src/ethnocoder/setup.py`
 
 Move all logic from `setup_dataset.py`.
 
@@ -799,7 +799,7 @@ git commit -m "feat: add ethnocoder.setup (from setup_dataset.py)"
 
 ---
 
-## Task 5: Update `tests.py` and verify tests pass
+## Task 6: Update `tests.py` and verify tests pass
 
 The three import lines at the top of `tests.py` point at the old script names. Update them to use the new package paths.
 
@@ -865,7 +865,7 @@ git commit -m "fix: update tests.py imports to use ethnocoder package"
 
 ---
 
-## Task 6: Create `src/ethnocoder/summarise.py`
+## Task 7: Create `src/ethnocoder/summarise.py`
 
 Move logic from `summarise.py`. Fix the cross-module import.
 
@@ -929,7 +929,7 @@ git commit -m "feat: add ethnocoder.summarise (from summarise.py)"
 
 ---
 
-## Task 7: Create `src/ethnocoder/batch.py`
+## Task 8: Create `src/ethnocoder/batch.py`
 
 Move logic from `run_batch.py`. Replace the `subprocess.run` call with a direct call to `code_pdf()`.
 
@@ -1023,7 +1023,7 @@ git commit -m "feat: add ethnocoder.batch (from run_batch.py, no subprocess)"
 
 ---
 
-## Task 8: Create `src/ethnocoder/check.py`
+## Task 9: Create `src/ethnocoder/check.py`
 
 Move all logic from `check_pdf.py`.
 
@@ -1112,7 +1112,7 @@ git commit -m "feat: add ethnocoder.check (from check_pdf.py)"
 
 ---
 
-## Task 9: Create `src/ethnocoder/init.py` with test
+## Task 10: Create `src/ethnocoder/init.py` with test
 
 New module: copies the bundled `PROMPT.md` into the CWD. Uses `importlib.resources` (Python 3.12 stdlib).
 
@@ -1207,7 +1207,7 @@ git commit -m "feat: add ethnocoder.init command with tests"
 
 ---
 
-## Task 10: Create `src/ethnocoder/cli.py`
+## Task 11: Create `src/ethnocoder/cli.py`
 
 Wire all subcommands under a single `ethnocoder` entry point.
 
@@ -1296,7 +1296,7 @@ git commit -m "feat: add ethnocoder.cli entrypoint, wire all subcommands"
 
 ---
 
-## Task 11: Delete old flat scripts
+## Task 12: Delete old flat scripts
 
 Only delete after all tests pass and the CLI is verified.
 
@@ -1341,7 +1341,7 @@ git commit -m "chore: remove old flat scripts, superseded by src/ethnocoder pack
 
 ---
 
-## Task 12: Update README
+## Task 13: Update README
 
 The README still references the old `python code_traits.py` invocations.
 

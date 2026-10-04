@@ -4,4 +4,6 @@ docs
 dataset
 env
 gold/
+parameters.csv
+codes.csv
 __pycache__
