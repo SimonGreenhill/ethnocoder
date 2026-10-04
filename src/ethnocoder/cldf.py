@@ -77,11 +77,13 @@ def write_gold(ds: pycldf.Dataset, out_dir: Path) -> int:
     gold_dir = out_dir / "gold"
     gold_dir.mkdir(parents=True, exist_ok=True)
     for key in sorted(source_index):
-        codings = codings_for_source(source_index[key], all_variables, code_names)
+        codings = [
+            c for c in codings_for_source(source_index[key], all_variables, code_names)
+            if c["code"] is not None
+        ]
         out_path = gold_dir / f"{key}.json"
         out_path.write_text(json.dumps(codings, indent=2), encoding="utf-8")
-        n_coded = sum(1 for c in codings if c["code"] is not None)
-        print(f"{key:40s}  {n_coded:3d}/{len(all_variables)} coded → {out_path}")
+        print(f"{key:40s}  {len(codings):3d}/{len(all_variables)} coded → {out_path}")
     return len(source_index)
 
 

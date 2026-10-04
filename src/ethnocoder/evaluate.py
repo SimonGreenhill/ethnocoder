@@ -109,14 +109,12 @@ def eval_codings(gold_path: Path, coded_path: Path, variables_path: Path) -> Non
 
     console.print(table)
 
-    total = matches + mismatches + missing
     pct = 100 * matches / (matches + mismatches) if (matches + mismatches) > 0 else 0
     style = "green" if pct >= 80 else "yellow" if pct >= 50 else "red"
     console.print()
     console.print(f"Correct:  [{style}]{matches}/{matches + mismatches} ({pct:.1f}%)[/{style}]")
     if missing:
         console.print(f"[yellow]Missing:  {missing} variables present in gold but absent from coded output[/yellow]")
-    console.print(f"[dim]Skipped:  {len(gold_raw) - total} variables with null gold code[/dim]")
 
 
 def add_subparser(subparsers) -> None:
