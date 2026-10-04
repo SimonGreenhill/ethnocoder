@@ -13,8 +13,6 @@ import litellm
 from ethnocoder.utils import strip_fences, parse_codings
 
 PROMPT_FILE = Path('.') / "PROMPT.md"
-PARAMETERS_CSV = Path('.') / "parameters.csv"
-CODES_CSV = Path('.') / "codes.csv"
 
 
 def load_prompt(path: Path) -> str:
@@ -164,7 +162,7 @@ def llm_stream(
     return strip_fences("".join(chunks))
 
 
-def code_section(
+def code_document(
     pdf_stem: str,
     variables: list[dict],
     codes_by_var: dict[str, list[dict]],
@@ -237,7 +235,7 @@ def code_pdf(
     out_dir.mkdir(exist_ok=True)
 
     print(f"Coding {pdf_path.name} ({len(variables)} variables) with {model}…", file=sys.stderr)
-    return code_section(
+    return code_document(
         pdf_path.stem, variables, codes_by_var, model, api_base, is_anthropic,
         messages, pdf_prefix=pdf_prefix, out_dir=out_dir,
     )

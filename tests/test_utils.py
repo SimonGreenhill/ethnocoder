@@ -17,6 +17,12 @@ class TestStripFences:
     def test_strips_fence_with_leading_whitespace(self):
         assert strip_fences('\n\n```json\n{"a": 1}\n```\n') == '{"a": 1}'
 
+    def test_opening_fence_without_closing(self):
+        assert strip_fences('```json\n{"a": 1}') == '{"a": 1}'
+
+    def test_closing_fence_without_opening(self):
+        assert strip_fences('{"a": 1}\n```') == '{"a": 1}'
+
 
 class TestParseCodings:
     def test_bare_list(self):

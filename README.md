@@ -30,41 +30,35 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export OPENAI_API_KEY="sk-..."
 ```
 
-3. Initialise
-
-```
-ethnocoder init <DIR> <DATASET>
-
-
-
-```
-
-3. Place PDF source documents in `docs/`. 
-
-NOTE: These need to be named by bibtex citation key i.e. "hv_vanderVeen_B30.pdf" or "s_Peckham_Mairasi_2000.pdf"
-
-4. Put CLDF dataset into `./dataset` (make sure `./dataset/cldf/*-metadata.json` exists).
-
-5. Run the setup command to copy variable/code definitions and extract gold-standard codings:
+3. Initialise a working directory from a CLDF dataset (make sure `<dataset>/cldf/*-metadata.json` exists):
 
 ```bash
-ethnocoder setup
+ethnocoder init /path/to/dataset .
 ```
 
-This will:
+This will, in the working directory:
 - Copy the ParameterTable → `parameters.csv`
 - Copy the CodeTable → `codes.csv`
 - Create `gold/` and write one gold JSON file per source document
+- Write `PROMPT.md` (the default system prompt) if it does not already exist
+- Create an empty `docs/` for PDF source documents
 
-Edit parameters.csv or codes.csv if you want to remove certain variables or codes etc.
+Edit `parameters.csv` or `codes.csv` to remove variables or codes, and `PROMPT.md` to customise the LLM system prompt.
 
-6. Initialise the project prompt:
+4. Place PDF source documents in `docs/`.
+
+NOTE: These need to be named by bibtex citation key i.e. "hv_vanderVeen_B30.pdf" or "s_Peckham_Mairasi_2000.pdf"
+
+### Inspecting or re-extracting a dataset
+
+`init` is a convenience wrapper over `dataset`. To inspect or extract individual pieces:
 
 ```bash
-ethnocoder init   # creates PROMPT.md in the current directory
+ethnocoder dataset /path/to/dataset                          # summary: parameter/code/source counts
+ethnocoder dataset /path/to/dataset --list                   # list source keys and stats
+ethnocoder dataset /path/to/dataset --extract gold -o .      # (re)write gold/ only
+ethnocoder dataset /path/to/dataset --extract parameters codes -o .
 ```
-
-Edit `PROMPT.md` to customise the system prompt for the LLM.
 
 
 ## Usage
@@ -84,6 +78,8 @@ Results are saved to `<model_name>/<pdf_stem>.json`.
 | Flag | Description |
 |------|-------------|
 | `--model`, `-m` | LiteLLM model string (required) |
+| `--variables` | Variables CSV (default: `parameters.csv`) |
+| `--codes` | Codes CSV (default: `codes.csv`) |
 | `--ids` | Comma-separated variable IDs to code (e.g. `2,3,5`) |
 | `--max-chars` | Truncate PDF text (useful for small context windows) |
 | `--api-base` | Override API base URL |
@@ -126,7 +122,7 @@ Prints page count, character count, and number of gold-coded variables for each 
 ## Tests
 
 ```bash
-python -m pytest tests.py -v
+python -m pytest
 ```
 
 ## Project structure
@@ -138,14 +134,14 @@ src/ethnocoder/     Installable package source
   batch.py          Batch runner for all PDFs in docs/
   evaluate.py       Per-variable comparison of coded output vs gold standard
   summarise.py      Aggregate accuracy summary across documents for a model
-  setup.py          Copies variables/codes from CLDF, extracts gold codings
+  cldf.py           CLDF dataset reading / extraction helpers
+  dataset.py        Inspect/extract a CLDF dataset (--list, --extract)
   check.py          Document statistics (pages, chars, coded variables)
-  init.py           Project scaffolding (creates PROMPT.md)
+  init.py           Bootstrap a working directory from a CLDF dataset
   data/PROMPT.md    Bundled default system prompt
 pyproject.toml      Package metadata and dependencies
 parameters.csv      Variable definitions
 codes.csv           Valid code values for option-type variables
 gold/               Gold-standard codings (one JSON per source document)
 docs/               PDF source documents
-dataset/            CLDF dataset
 ```

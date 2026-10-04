@@ -1,6 +1,6 @@
 import json
 
-from ethnocoder.evaluate import load_codings_as_dict, normalize_code
+from ethnocoder.evaluate import load_codings, load_codings_as_dict, normalize_code
 
 
 class TestNormalizeCode:
@@ -38,3 +38,16 @@ class TestLoadCodingsAsDict:
         p = tmp_path / "doc.json"
         p.write_text(json.dumps({"codings": [{"id": "1", "code": None}, {"id": "2", "code": "a"}]}))
         assert load_codings_as_dict(p) == {"2": "a"}
+
+
+class TestLoadCodings:
+    def test_codings_wrapper_from_file(self, tmp_path):
+        p = tmp_path / "doc.json"
+        p.write_text(json.dumps({"codings": [{"id": 1, "code": "0"}]}))
+        assert load_codings(p) == [{"id": 1, "code": "0"}]
+
+    def test_fenced_file(self, tmp_path):
+        p = tmp_path / "doc.json"
+        inner = json.dumps({"codings": [{"id": 1, "code": "0"}]})
+        p.write_text(f"```json\n{inner}\n```")
+        assert load_codings(p) == [{"id": 1, "code": "0"}]

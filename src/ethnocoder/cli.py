@@ -1,6 +1,6 @@
 import argparse
 
-from ethnocoder import batch, check, code, evaluate, init, setup, summarise
+from ethnocoder import batch, check, code, dataset, evaluate, init, summarise
 
 
 def main() -> None:
@@ -15,9 +15,13 @@ def main() -> None:
     batch.add_subparser(subparsers)
     evaluate.add_subparser(subparsers)
     summarise.add_subparser(subparsers)
-    setup.add_subparser(subparsers)
+    dataset.add_subparser(subparsers)
     check.add_subparser(subparsers)
     init.add_subparser(subparsers)
 
     args = parser.parse_args()
     args.func(args)
+
+
+if __name__ == "__main__":
+    main()
