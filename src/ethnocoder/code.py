@@ -263,6 +263,7 @@ def add_subparser(subparsers) -> None:
     p = subparsers.add_parser(
         "code",
         description="Code a PDF for cultural traits using a local or remote LLM",
+        help="Code a PDF for cultural traits using a local or remote LLM",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("pdf", help="PDF file to code")

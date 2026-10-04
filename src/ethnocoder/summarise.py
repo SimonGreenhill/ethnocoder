@@ -19,6 +19,7 @@ def add_subparser(subparsers) -> None:
     p = subparsers.add_parser(
         "summarise",
         description="Summarise accuracy across all documents for a model",
+        help="Summarise accuracy across all documents for a model",
     )
     p.add_argument("modeldir", type=Path, help="Directory of coded JSON outputs")
     p.set_defaults(func=_run)

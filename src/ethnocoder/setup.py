@@ -58,6 +58,7 @@ def add_subparser(subparsers) -> None:
     p = subparsers.add_parser(
         "setup",
         description="Set up working files from a CLDF dataset",
+        help="Set up working files from a CLDF dataset",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(

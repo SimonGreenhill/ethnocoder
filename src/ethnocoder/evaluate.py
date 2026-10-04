@@ -123,6 +123,7 @@ def add_subparser(subparsers) -> None:
     p = subparsers.add_parser(
         "evaluate",
         description="Compare gold and coded JSON files for cultural trait codings",
+        help="Compare gold and coded JSON files for cultural trait codings",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("doc", help="Coded JSON file")

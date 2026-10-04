@@ -28,6 +28,7 @@ def add_subparser(subparsers) -> None:
     p = subparsers.add_parser(
         "check",
         description="Print per-document statistics from the docs/ directory",
+        help="Print per-document statistics from the docs/ directory",
     )
     p.add_argument("--docs-dir", type=Path, default=Path("docs"))
     p.add_argument("--gold-dir", type=Path, default=Path("gold"))

@@ -7,6 +7,7 @@ def add_subparser(subparsers) -> None:
     p = subparsers.add_parser(
         "init",
         description="Initialise a new ethnocoder project in the current directory",
+        help="Initialise a new ethnocoder project in the current directory",
     )
     p.set_defaults(func=_run)
 

@@ -13,6 +13,7 @@ def add_subparser(subparsers) -> None:
     p = subparsers.add_parser(
         "batch",
         description="Run ethnocoder code on all PDFs in docs/ under a size limit",
+        help="Run ethnocoder code on all PDFs in docs/ under a size limit",
     )
     p.add_argument("model", help="LiteLLM model string")
     p.add_argument("--max-mb", type=float, default=1.0, help="Max file size in MB (default: 1.0)")
