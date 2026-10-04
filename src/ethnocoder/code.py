@@ -3,6 +3,7 @@ import csv
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pymupdf
 import logging
@@ -36,7 +37,7 @@ def load_codes(path: Path) -> dict[str, list[dict]]:
 
 def extract_pdf_text(pdf_path: Path, max_chars: int | None = None) -> str:
     doc = pymupdf.open(str(pdf_path))
-    pages = [page.get_text() for page in doc]
+    pages = [cast(str, page.get_text()) for page in doc]
     doc.close()
     text = "\n\n".join(pages)
     if max_chars and len(text) > max_chars:
@@ -155,7 +156,7 @@ def llm_stream(
         kwargs["api_base"] = api_base
 
     chunks: list[str] = []
-    response = litellm.completion(model=model, messages=messages, **kwargs)
+    response = cast(Any, litellm.completion(model=model, messages=messages, **kwargs))
     for chunk in response:
         delta = chunk.choices[0].delta.content or ""
         if delta:

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import cast
 
 import pymupdf
 from rich.console import Console
@@ -11,7 +12,7 @@ console = Console()
 def pdf_stats(pdf_path: Path) -> dict:
     doc = pymupdf.open(str(pdf_path))
     pages = len(doc)
-    text = "\n\n".join(page.get_text() for page in doc)
+    text = "\n\n".join(cast(str, page.get_text()) for page in doc)
     doc.close()
     return {"pages": pages, "chars": len(text)}
 

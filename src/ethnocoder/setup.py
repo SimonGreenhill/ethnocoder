@@ -4,7 +4,9 @@ import re
 import shutil
 import sys
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Any, cast
 
 import pycldf
 
@@ -25,7 +27,7 @@ def find_metadata(dataset_dir: Path) -> Path:
 
 def build_source_index(ds: pycldf.Dataset) -> dict[str, list[dict]]:
     index: dict[str, list[dict]] = defaultdict(list)
-    for row in ds["ValueTable"]:
+    for row in cast(Iterable[dict], ds["ValueTable"]):
         for src in row["Source"]:
             key = strip_pages(src)
             if key:
@@ -82,13 +84,13 @@ def _run(args) -> None:
             (ds["ParameterTable"], "parameters.csv"),
             (ds["CodeTable"], "codes.csv"),
         ):
-            src = ds.directory / table.url.string
+            src = Path(ds.directory) / cast(Any, table).url.string
             dst = Path(dst_name)
             shutil.copy2(src, dst)
             print(f"Copied {src} → {dst}")
 
-    all_variables = list(ds["ParameterTable"])
-    code_names = {row["ID"]: row["Name"] for row in ds["CodeTable"]}
+    all_variables = list(cast(Iterable[dict], ds["ParameterTable"]))
+    code_names = {row["ID"]: row["Name"] for row in cast(Iterable[dict], ds["CodeTable"])}
     source_index = build_source_index(ds)
 
     if args.list:
