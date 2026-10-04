@@ -1,6 +1,9 @@
 # Ethnocoder
 
-Automated coding of cultural trait variables from PDF source documents using LLMs. Given a CLDF dataset, a PDF and a set of variable definitions, the system prompts an LLM to assign standardised codes for each variable, then evaluates accuracy against gold-standard codings.
+Automated coding of cultural trait variables from PDF source documents using
+LLMs. Given a CLDF dataset, a PDF and a set of variable definitions, the system
+prompts an LLM to assign standardised codes for each variable, then evaluates
+accuracy against gold-standard codings.
 
 ## Requirements
 
@@ -20,14 +23,24 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
-2. Set API keys as needed:
+2. Set API keys as needed (for Claude or ChatGPT):
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 export OPENAI_API_KEY="sk-..."
 ```
 
+3. Initialise
+
+```
+ethnocoder init <DIR> <DATASET>
+
+
+
+```
+
 3. Place PDF source documents in `docs/`. 
+
 NOTE: These need to be named by bibtex citation key i.e. "hv_vanderVeen_B30.pdf" or "s_Peckham_Mairasi_2000.pdf"
 
 4. Put CLDF dataset into `./dataset` (make sure `./dataset/cldf/*-metadata.json` exists).
@@ -71,9 +84,7 @@ Results are saved to `<model_name>/<pdf_stem>.json`.
 | Flag | Description |
 |------|-------------|
 | `--model`, `-m` | LiteLLM model string (required) |
-| `--section` | Only code variables in a specific section (substring match) |
 | `--ids` | Comma-separated variable IDs to code (e.g. `2,3,5`) |
-| `--by-section` | Code variables section-by-section in separate LLM calls |
 | `--max-chars` | Truncate PDF text (useful for small context windows) |
 | `--api-base` | Override API base URL |
 | `--print-prompt` | Print the full prompt and exit without calling the LLM |

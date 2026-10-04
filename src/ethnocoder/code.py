@@ -224,7 +224,6 @@ def code_pdf(
     model: str | None = None,
     api_base: str | None = None,
     max_chars: int | None = None,
-    by_section: bool = False,
 ) -> list[dict]:
     if model is None:
         sys.exit("Error: --model is required")
@@ -237,27 +236,11 @@ def code_pdf(
     out_dir = Path(model_dirname(model))
     out_dir.mkdir(exist_ok=True)
 
-    if by_section:
-        sections: dict[str, list[dict]] = {}
-        for v in variables:
-            sections.setdefault(v.get("Section", ""), []).append(v)
-        codings_by_id: dict[str, dict] = {}
-        first = True
-        for section_name, section_vars in sections.items():
-            print(f"  [{section_name}] — {len(section_vars)} variables…", file=sys.stderr)
-            for c in code_section(
-                pdf_path.stem, section_vars, codes_by_var, model, api_base, is_anthropic,
-                messages, pdf_prefix=pdf_prefix if first else "", out_dir=out_dir,
-            ):
-                codings_by_id[str(c.get("id", ""))] = c
-            first = False
-        return list(codings_by_id.values())
-    else:
-        print(f"Coding {pdf_path.name} ({len(variables)} variables) with {model}…", file=sys.stderr)
-        return code_section(
-            pdf_path.stem, variables, codes_by_var, model, api_base, is_anthropic,
-            messages, pdf_prefix=pdf_prefix, out_dir=out_dir,
-        )
+    print(f"Coding {pdf_path.name} ({len(variables)} variables) with {model}…", file=sys.stderr)
+    return code_section(
+        pdf_path.stem, variables, codes_by_var, model, api_base, is_anthropic,
+        messages, pdf_prefix=pdf_prefix, out_dir=out_dir,
+    )
 
 
 def add_subparser(subparsers) -> None:
@@ -271,11 +254,9 @@ def add_subparser(subparsers) -> None:
     p.add_argument("--model", "-m", default=None, help="LiteLLM model string (required)")
     p.add_argument("--variables", default="parameters.csv", help="Variables CSV (default: parameters.csv)")
     p.add_argument("--codes", default="codes.csv", help="Codes CSV (default: codes.csv)")
-    p.add_argument("--section", help="Only code variables in this section (substring match)")
     p.add_argument("--ids", help="Comma-separated list of variable IDs to code (e.g. 2,3,5)")
     p.add_argument("--api-base", default=None, help="Override API base URL")
     p.add_argument("--max-chars", type=int, default=None, help="Truncate PDF text to this many characters")
-    p.add_argument("--by-section", action="store_true", help="Code variables section by section")
     p.add_argument("--print-prompt", action="store_true", help="Print the full prompt and exit")
     p.add_argument("--dump", action="store_true", help="Dump messages JSON and exit")
     p.set_defaults(func=_run)
@@ -290,10 +271,6 @@ def _run(args) -> None:
     codes_by_var = load_codes(Path(args.codes))
 
     variables = all_variables
-    if args.section:
-        variables = [v for v in variables if args.section.lower() in v.get("Section", "").lower()]
-        if not variables:
-            sys.exit(f"No variables found in section matching '{args.section}'")
     if args.ids:
         id_set = {i.strip() for i in args.ids.split(",")}
         variables = [v for v in variables if v["ID"] in id_set]
@@ -318,19 +295,8 @@ def _run(args) -> None:
         pdf_text = extract_pdf_text(pdf_path, max_chars=args.max_chars)
         pdf_prefix = f"Source document: {pdf_path.stem}\n\n{pdf_text}"
         messages: list[dict] = [{"role": "system", "content": load_prompt(PROMPT_FILE)}]
-        if args.by_section:
-            sections: dict[str, list[dict]] = {}
-            for v in variables:
-                sections.setdefault(v.get("Section", ""), []).append(v)
-            first = True
-            for section_vars in sections.values():
-                coding_prompt = build_coding_prompt(section_vars, codes_by_var)
-                user_content = f"{pdf_prefix}\n\n---\n\n{coding_prompt}" if first else coding_prompt
-                messages.append({"role": "user", "content": user_content})
-                first = False
-        else:
-            coding_prompt = build_coding_prompt(variables, codes_by_var)
-            messages.append({"role": "user", "content": f"{pdf_prefix}\n\n---\n\n{coding_prompt}"})
+        coding_prompt = build_coding_prompt(variables, codes_by_var)
+        messages.append({"role": "user", "content": f"{pdf_prefix}\n\n---\n\n{coding_prompt}"})
         print(json.dumps(messages, indent=2))
         return
 
@@ -341,7 +307,6 @@ def _run(args) -> None:
         model=args.model,
         api_base=args.api_base,
         max_chars=args.max_chars,
-        by_section=args.by_section,
     )
 
     json_path = Path(model_dirname(args.model)) / f"{pdf_path.stem}.json"
