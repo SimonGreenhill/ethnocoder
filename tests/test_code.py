@@ -1,8 +1,16 @@
+import json
+
+import pytest
+
+import ethnocoder.code as code_mod
 from ethnocoder.code import (
     build_coding_prompt,
     build_review_message,
     clean_codings,
+    code_document,
+    estimate_tokens,
     model_dirname,
+    pack_batches,
     resolve_model_config,
     validate_option_codes,
 )
@@ -71,6 +79,14 @@ class TestValidateOptionCodes:
         result = validate_option_codes([{"id": "99", "code": "x"}], self.CODES, self.VARIABLES)
         assert result == [{"id": "99", "code": "x"}]
 
+    def test_null_code_not_flagged(self):
+        result = validate_option_codes([{"id": "1", "code": None}], self.CODES, self.VARIABLES)
+        assert result == [{"id": "1", "code": None}]
+
+    def test_empty_code_not_flagged(self):
+        result = validate_option_codes([{"id": "1", "code": ""}], self.CODES, self.VARIABLES)
+        assert result == [{"id": "1", "code": ""}]
+
 
 class TestBuildReviewMessage:
     def test_all_clean_returns_none(self):
@@ -96,6 +112,116 @@ class TestBuildReviewMessage:
         codings = [{"id": "1", "code": "z", "confidence": "low", "_invalid": True, "_valid_codes": ["a"]}]
         _, n_invalid, n_low = build_review_message(codings)
         assert n_invalid == 1 and n_low == 0
+
+
+class TestEstimateTokens:
+    def test_empty(self):
+        assert estimate_tokens("") == 0
+
+    def test_four_chars_per_token(self):
+        assert estimate_tokens("a" * 8) == 2
+
+
+class TestPackBatches:
+    def test_none_budget_single_batch(self):
+        items = ["a", "b", "c"]
+        sizes = [40, 40, 40]
+        assert pack_batches(items, sizes, prefix_tokens=10, context_budget=None,
+                            response_reserve_per_var=0) == [["a", "b", "c"]]
+
+    def test_fits_in_one_batch(self):
+        items = ["a", "b", "c"]
+        sizes = [10, 10, 10]
+        assert pack_batches(items, sizes, prefix_tokens=10, context_budget=100,
+                            response_reserve_per_var=0) == [["a", "b", "c"]]
+
+    def test_splits_into_multiple_batches(self):
+        items = ["a", "b", "c", "d"]
+        sizes = [40, 40, 40, 40]
+        # prefix 10 + 40 + 40 = 90 ok; + 40 = 130 > 100 -> split
+        assert pack_batches(items, sizes, prefix_tokens=10, context_budget=100,
+                            response_reserve_per_var=0) == [["a", "b"], ["c", "d"]]
+
+    def test_reserve_counts_against_budget(self):
+        items = ["a", "b"]
+        sizes = [40, 40]
+        # effective size 50 each; 10 + 50 = 60 ok, + 50 = 110 > 100 -> one per batch
+        assert pack_batches(items, sizes, prefix_tokens=10, context_budget=100,
+                            response_reserve_per_var=10) == [["a"], ["b"]]
+
+    def test_single_item_too_big_raises(self):
+        with pytest.raises(ValueError):
+            pack_batches(["a"], [95], prefix_tokens=10, context_budget=100,
+                         response_reserve_per_var=0)
+
+    def test_empty_items(self):
+        assert pack_batches([], [], prefix_tokens=10, context_budget=100,
+                            response_reserve_per_var=0) == []
+
+
+def _fake_stream(calls):
+    def stream(messages, model, is_anthropic, api_base):
+        calls.append(messages)
+        user = messages[-1]["content"]
+        ids = [
+            line.split("ID ", 1)[1].split(":")[0].strip()
+            for line in user.splitlines()
+            if line.startswith("ID ")
+        ]
+        return json.dumps({"codings": [{"id": i, "code": "1"} for i in ids]})
+
+    return stream
+
+
+def _int_vars(n, desc=""):
+    return [
+        {"ID": str(i), "Name": f"V{i}", "Datatype": "Int", "Description": desc}
+        for i in range(n)
+    ]
+
+
+class TestCodeDocument:
+    def test_single_call_when_no_budget(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(code_mod, "llm_stream", _fake_stream(calls))
+        messages = [{"role": "system", "content": "sys"}]
+        result = code_document(
+            "stem", _int_vars(4), {}, "m", None, False, messages,
+            pdf_prefix="PDF", out_dir=tmp_path, context_budget=None,
+        )
+        assert len(calls) == 1
+        assert {c["id"] for c in result} == {"0", "1", "2", "3"}
+        saved = json.loads((tmp_path / "stem.json").read_text())
+        assert {c["id"] for c in saved["codings"]} == {"0", "1", "2", "3"}
+
+    def test_batches_split_and_merge(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(code_mod, "llm_stream", _fake_stream(calls))
+        messages = [{"role": "system", "content": "sys"}]
+        result = code_document(
+            "stem", _int_vars(4, desc="x" * 800), {}, "m", None, False, messages,
+            pdf_prefix="PDF", out_dir=tmp_path, context_budget=300,
+            response_reserve_per_var=0,
+        )
+        assert len(calls) >= 2
+        assert {c["id"] for c in result} == {"0", "1", "2", "3"}
+        assert len(result) == 4
+        assert "=== batch 1 ===" in (tmp_path / "stem.txt").read_text()
+
+    def test_identical_prefix_across_batches(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(code_mod, "llm_stream", _fake_stream(calls))
+        messages = [{"role": "system", "content": "sys"}]
+        code_document(
+            "stem", _int_vars(4, desc="x" * 800), {}, "m", None, False, messages,
+            pdf_prefix="PDF", out_dir=tmp_path, context_budget=300,
+            response_reserve_per_var=0,
+        )
+        # every batch's first message (system) and PDF prefix must match for KV reuse
+        systems = {m[0]["content"] for m in calls}
+        prefixes = {m[1]["content"].split("---")[0] for m in calls}
+        assert systems == {"sys"}
+        assert prefixes == {"PDF\n\n"}
 
 
 class TestBuildCodingPrompt:

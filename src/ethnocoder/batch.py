@@ -19,6 +19,19 @@ def add_subparser(subparsers) -> None:
     p.add_argument("--max-mb", type=float, default=1.0, help="Max file size in MB (default: 1.0)")
     p.add_argument("--dry-run", action="store_true", help="Print what would run without running it")
     p.add_argument("--force", action="store_true", help="Re-run even if output already exists")
+    p.add_argument(
+        "--context-budget",
+        type=int,
+        default=None,
+        help="Token budget per request. When set, variables are coded in batches that fit "
+        "this budget. Omit for a single request with all variables.",
+    )
+    p.add_argument(
+        "--response-reserve-per-var",
+        type=int,
+        default=250,
+        help="Estimated output tokens reserved per variable when packing batches (default: 250)",
+    )
     p.set_defaults(func=_run)
 
 
@@ -55,7 +68,11 @@ def _run(args) -> None:
             print(f"  → would run: ethnocoder code --model {args.model} {pdf}")
             continue
         try:
-            codings = code_pdf(pdf, variables, codes_by_var, model=args.model)
+            codings = code_pdf(
+                pdf, variables, codes_by_var, model=args.model,
+                context_budget=args.context_budget,
+                response_reserve_per_var=args.response_reserve_per_var,
+            )
             out_dir.mkdir(exist_ok=True)
             out_path = out_dir / f"{pdf.stem}.json"
             out_path.write_text(json.dumps({"codings": codings}, indent=2), encoding="utf-8")

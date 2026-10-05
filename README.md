@@ -1,6 +1,6 @@
 # Ethnocoder
 
-Automated coding of cultural trait variables from PDF source documents using
+Automated coding of trait and feature variables from PDF source documents using
 LLMs. Given a CLDF dataset, a PDF and a set of variable definitions, the system
 prompts an LLM to assign standardised codes for each variable, then evaluates
 accuracy against gold-standard codings.
@@ -73,6 +73,17 @@ ethnocoder code docs/example.pdf --model lm_studio/gemma-4-e4b --api-base http:/
 
 Results are saved to `<model_name>/<pdf_stem>.json`.
 
+The `--model` string must include a LiteLLM **provider prefix** (`anthropic/`,
+`openai/`, `ollama/`, `lm_studio/`, …). A bare name like `gemma-4-12b-qat` fails
+with `LLM Provider NOT provided`, because `--api-base` sets only the URL, not the
+request format. For LM Studio use the `lm_studio/` prefix — it defaults
+`--api-base` to `http://localhost:1234/v1`, so you can omit the flag unless your
+port differs:
+
+```bash
+ethnocoder code docs/example.pdf --model lm_studio/gemma-4-12b-qat
+```
+
 #### Options
 
 | Flag | Description |
@@ -83,7 +94,28 @@ Results are saved to `<model_name>/<pdf_stem>.json`.
 | `--ids` | Comma-separated variable IDs to code (e.g. `2,3,5`) |
 | `--max-chars` | Truncate PDF text (useful for small context windows) |
 | `--api-base` | Override API base URL |
+| `--context-budget` | Token budget per request — codes variables in batches that fit it (see below) |
+| `--response-reserve-per-var` | Output tokens reserved per variable when packing batches (default: 250) |
 | `--print-prompt` | Print the full prompt and exit without calling the LLM |
+
+#### Batching for small context windows
+
+Sending every variable in one request can exceed a local model's context window
+(e.g. 195 Grambank variables ≈ 240k tokens, mostly from long variable descriptions).
+Set `--context-budget` to the model's context size to code variables in batches that
+fit:
+
+```bash
+ethnocoder code docs/example.pdf --model lm_studio/gemma-4-12b-qat --context-budget 100000
+```
+
+Each batch is a fresh request with an identical `[system prompt, PDF]` prefix, so a
+local server (LM Studio / llama.cpp) reuses its cached KV for that prefix and the PDF
+is processed once rather than per batch. Results are merged and written incrementally
+after each batch, so an interrupted run keeps completed batches. Without
+`--context-budget`, all variables go in a single request (fine for large-context API
+models). If the PDF alone is too big to leave room for even one variable, the run
+stops with a message to raise the budget or use `--max-chars`.
 
 
 ### Batch coding

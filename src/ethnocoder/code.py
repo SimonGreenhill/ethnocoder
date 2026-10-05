@@ -35,7 +35,7 @@ def load_codes(path: Path) -> dict[str, list[dict]]:
 
 def extract_pdf_text(pdf_path: Path, max_chars: int | None = None) -> str:
     doc = pymupdf.open(str(pdf_path))
-    pages = [cast(str, page.get_text()) for page in doc]
+    pages = [f"[page {i}]\n{cast(str, page.get_text())}" for i, page in enumerate(doc, 1)]  # type: ignore[arg-type]
     doc.close()
     text = "\n\n".join(pages)
     if max_chars and len(text) > max_chars:
@@ -48,8 +48,7 @@ def extract_pdf_text(pdf_path: Path, max_chars: int | None = None) -> str:
 def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) -> str:
     lines: list[str] = [
         "Code each variable below based on the source document above.",
-        "For each, assign the most appropriate code and briefly justify your choice.",
-        "Use confidence 'absent' when the document contains no relevant evidence.\n",
+        "For each, assign the most appropriate code and briefly justify your choice.\n",
     ]
 
     current_section = None
@@ -90,6 +89,42 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
     return "\n".join(lines)
 
 
+def estimate_tokens(text: str) -> int:
+    return len(text) // 4
+
+
+def pack_batches(
+    items: list,
+    sizes: list[int],
+    prefix_tokens: int,
+    context_budget: int | None,
+    response_reserve_per_var: int,
+) -> list[list]:
+    if context_budget is None:
+        return [list(items)] if items else []
+
+    batches: list[list] = []
+    current: list = []
+    current_tokens = prefix_tokens
+    for item, size in zip(items, sizes):
+        cost = size + response_reserve_per_var
+        if prefix_tokens + cost > context_budget:
+            raise ValueError(
+                f"A single variable needs {cost} tokens on top of a {prefix_tokens}-token "
+                f"prefix, exceeding the {context_budget}-token budget. "
+                "Raise --context-budget or shrink the PDF with --max-chars."
+            )
+        if current and current_tokens + cost > context_budget:
+            batches.append(current)
+            current = []
+            current_tokens = prefix_tokens
+        current.append(item)
+        current_tokens += cost
+    if current:
+        batches.append(current)
+    return batches
+
+
 def clean_codings(codings: list[dict]) -> list[dict]:
     return [{k: v for k, v in c.items() if not k.startswith("_")} for c in codings]
 
@@ -108,7 +143,11 @@ def validate_option_codes(
     result = []
     for c in codings:
         vid = str(c.get("id", ""))
-        if vid in valid and str(c.get("code", "")) not in valid[vid]:
+        code = c.get("code")
+        if code is None or code == "":
+            result.append(c)  # no code assigned (evidence absent) — nothing to validate
+            continue
+        if vid in valid and str(code) not in valid[vid]:
             c = dict(c, _invalid=True, _valid_codes=sorted(valid[vid]))
         result.append(c)
     return result
@@ -116,7 +155,11 @@ def validate_option_codes(
 
 def build_review_message(codings: list[dict]) -> tuple[str | None, int, int]:
     invalid = [c for c in codings if c.get("_invalid")]
-    low_conf = [c for c in codings if c.get("confidence") in ("low", "absent") and not c.get("_invalid")]
+    low_conf = [
+        c for c in codings
+        if (c.get("confidence") in ("low", "absent") or c.get("evidence") == "absent")
+        and not c.get("_invalid")
+    ]
 
     if not invalid and not low_conf:
         return None, 0, 0
@@ -162,6 +205,43 @@ def llm_stream(
     return strip_fences("".join(chunks))
 
 
+def code_batch(
+    variables: list[dict],
+    codes_by_var: dict[str, list[dict]],
+    model: str,
+    api_base: str | None,
+    is_anthropic: bool,
+    system_msg: dict,
+    pdf_prefix: str,
+) -> tuple[list[dict], str]:
+    """Code one batch of variables in a fresh conversation.
+
+    The prefix [system_msg, pdf_prefix] is identical across batches so a local
+    server can reuse its cached KV for the PDF instead of reprocessing it.
+    Returns (cleaned codings, final raw response text).
+    """
+    coding_prompt = build_coding_prompt(variables, codes_by_var)
+    user_content = f"{pdf_prefix}\n\n---\n\n{coding_prompt}" if pdf_prefix else coding_prompt
+    messages = [system_msg, {"role": "user", "content": user_content}]
+
+    text = llm_stream(messages, model, is_anthropic, api_base)
+    codings = parse_codings(text) or []
+    codings = validate_option_codes(codings, codes_by_var, variables)
+    review_msg, n_invalid, n_low = build_review_message(codings)
+
+    if review_msg is None:
+        return clean_codings(codings), text
+
+    print(
+        f"  → Review pass ({n_invalid} invalid code(s), {n_low} low-confidence)…",
+        file=sys.stderr,
+    )
+    messages.append({"role": "assistant", "content": json.dumps({"codings": clean_codings(codings)}, indent=2)})
+    messages.append({"role": "user", "content": review_msg})
+    text2 = llm_stream(messages, model, is_anthropic, api_base)
+    return clean_codings(parse_codings(text2) or []), text2
+
+
 def code_document(
     pdf_stem: str,
     variables: list[dict],
@@ -172,36 +252,45 @@ def code_document(
     messages: list[dict],
     pdf_prefix: str = "",
     out_dir: Path = Path("."),
+    context_budget: int | None = None,
+    response_reserve_per_var: int = 250,
 ) -> list[dict]:
-    coding_prompt = build_coding_prompt(variables, codes_by_var)
-    user_content = f"{pdf_prefix}\n\n---\n\n{coding_prompt}" if pdf_prefix else coding_prompt
-    messages.append({"role": "user", "content": user_content})
+    system_msg = messages[0]
+    prefix_tokens = estimate_tokens(system_msg["content"]) + estimate_tokens(pdf_prefix)
+    var_size = {
+        v["ID"]: estimate_tokens(build_coding_prompt([v], codes_by_var))
+        for v in variables
+    }
+    sizes = [var_size[v["ID"]] for v in variables]
+    try:
+        batches = pack_batches(
+            variables, sizes, prefix_tokens, context_budget, response_reserve_per_var
+        )
+    except ValueError as e:
+        sys.exit(f"Error: {e}")
 
-    text = llm_stream(messages, model, is_anthropic, api_base)
-    (out_dir / f"{pdf_stem}.txt").write_text(text, encoding="utf-8")
-    codings = parse_codings(text) or []
+    txt_path = out_dir / f"{pdf_stem}.txt"
+    json_path = out_dir / f"{pdf_stem}.json"
+    all_codings: list[dict] = []
+    raw_parts: list[str] = []
+    multi = len(batches) > 1
 
-    codings = validate_option_codes(codings, codes_by_var, variables)
-    review_msg, n_invalid, n_low = build_review_message(codings)
+    for i, batch in enumerate(batches, 1):
+        if multi:
+            batch_tokens = prefix_tokens + sum(var_size[v["ID"]] for v in batch)
+            print(
+                f"  Batch {i}/{len(batches)} ({len(batch)} vars, ~{batch_tokens // 1000}k tok)…",
+                file=sys.stderr,
+            )
+        clean, text = code_batch(
+            batch, codes_by_var, model, api_base, is_anthropic, system_msg, pdf_prefix
+        )
+        all_codings.extend(clean)
+        raw_parts.append(f"=== batch {i} ===\n{text}" if multi else text)
+        txt_path.write_text("\n\n".join(raw_parts), encoding="utf-8")
+        json_path.write_text(json.dumps({"codings": all_codings}, indent=2), encoding="utf-8")
 
-    if review_msg is None:
-        clean = clean_codings(codings)
-        messages.append({"role": "assistant", "content": json.dumps({"codings": clean}, indent=2)})
-        return clean
-
-    print(
-        f"  → Review pass ({n_invalid} invalid code(s), {n_low} low-confidence)…",
-        file=sys.stderr,
-    )
-    messages.append({"role": "assistant", "content": json.dumps({"codings": clean_codings(codings)}, indent=2)})
-    messages.append({"role": "user", "content": review_msg})
-    text2 = llm_stream(messages, model, is_anthropic, api_base)
-    (out_dir / f"{pdf_stem}.txt").write_text(text2, encoding="utf-8")
-    codings = parse_codings(text2) or []
-
-    clean = clean_codings(codings)
-    messages.append({"role": "assistant", "content": json.dumps({"codings": clean}, indent=2)})
-    return clean
+    return all_codings
 
 
 def model_dirname(model: str) -> str:
@@ -222,6 +311,8 @@ def code_pdf(
     model: str | None = None,
     api_base: str | None = None,
     max_chars: int | None = None,
+    context_budget: int | None = None,
+    response_reserve_per_var: int = 250,
 ) -> list[dict]:
     if model is None:
         sys.exit("Error: --model is required")
@@ -238,14 +329,15 @@ def code_pdf(
     return code_document(
         pdf_path.stem, variables, codes_by_var, model, api_base, is_anthropic,
         messages, pdf_prefix=pdf_prefix, out_dir=out_dir,
+        context_budget=context_budget, response_reserve_per_var=response_reserve_per_var,
     )
 
 
 def add_subparser(subparsers) -> None:
     p = subparsers.add_parser(
         "code",
-        description="Code a PDF for cultural traits using a local or remote LLM",
-        help="Code a PDF for cultural traits using a local or remote LLM",
+        description="Code a PDF for trait/feature variables using a local or remote LLM",
+        help="Code a PDF for trait/feature variables using a local or remote LLM",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("pdf", help="PDF file to code")
@@ -255,6 +347,19 @@ def add_subparser(subparsers) -> None:
     p.add_argument("--ids", help="Comma-separated list of variable IDs to code (e.g. 2,3,5)")
     p.add_argument("--api-base", default=None, help="Override API base URL")
     p.add_argument("--max-chars", type=int, default=None, help="Truncate PDF text to this many characters")
+    p.add_argument(
+        "--context-budget",
+        type=int,
+        default=None,
+        help="Token budget per request. When set, variables are coded in batches that fit "
+        "this budget (reusing a cached PDF prefix). Omit for a single request with all variables.",
+    )
+    p.add_argument(
+        "--response-reserve-per-var",
+        type=int,
+        default=250,
+        help="Estimated output tokens reserved per variable when packing batches (default: 250)",
+    )
     p.add_argument("--print-prompt", action="store_true", help="Print the full prompt and exit")
     p.add_argument("--dump", action="store_true", help="Dump messages JSON and exit")
     p.set_defaults(func=_run)
@@ -305,6 +410,8 @@ def _run(args) -> None:
         model=args.model,
         api_base=args.api_base,
         max_chars=args.max_chars,
+        context_budget=args.context_budget,
+        response_reserve_per_var=args.response_reserve_per_var,
     )
 
     json_path = Path(model_dirname(args.model)) / f"{pdf_path.stem}.json"
