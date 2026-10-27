@@ -1,9 +1,43 @@
-claude-opus-4-6/
-claude-opus-4-8/
+# Folders
 docs
 dataset
 env
 gold/
+
+# Master documents
 parameters.csv
 codes.csv
+
+# Model output directories
+output/
+claude-opus-4-6/
+claude-opus-4-8/
+llama3.2:1b/
+llama3.2_1b/
+llama3.1:8b/
+llama3.1_8b/
+qwen3.6:35b/
+qwen3.6_35b/
+glm-5.3-flash/
+
+# Logging
+logs/
+
+# VS Code
+*.code-workspace
+.vscode/
+
+# python
 __pycache__
+
+# .venv
+.venv*
+
+# pytest
+.pytest_cache/
+
+# OS specific
+.DS_Store
+
+# misc
+sandbox/

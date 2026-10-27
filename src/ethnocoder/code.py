@@ -1,6 +1,7 @@
 import argparse
 import csv
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -10,7 +11,7 @@ import logging
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 import litellm
 
-from ethnocoder.utils import strip_fences, parse_codings
+from ethnocoder.utils import strip_fences, parse_codings, get_timestamp
 
 PROMPT_FILE = Path('.') / "PROMPT.md"
 
@@ -134,12 +135,22 @@ def validate_option_codes(
     codes_by_var: dict[str, list[dict]],
     variables: list[dict],
 ) -> list[dict]:
+    """
+    Validate that the codes assigned to option variables are among the allowed codes.
+    Marks codings with "_invalid" and "_valid_codes" if the code is not valid.
+    """
+
+    # Set option variables
     option_vars = {v["ID"] for v in variables if v.get("Datatype", "Option") == "Option"}
+
+    # Build a dictionary of valid codes for each option variable
     valid: dict[str, set[str]] = {
         vid: {c["Name"] for c in codes}
         for vid, codes in codes_by_var.items()
         if vid in option_vars
     }
+
+    # Initialize the result list to store validated codings
     result = []
     for c in codings:
         vid = str(c.get("id", ""))
@@ -149,6 +160,15 @@ def validate_option_codes(
             continue
         if vid in valid and str(code) not in valid[vid]:
             c = dict(c, _invalid=True, _valid_codes=sorted(valid[vid]))
+
+        # If the coded variable is not even in variables, mark an error.
+        # Then the review prompt will tell the LLM it shouldn't have included this variable.
+        if vid not in valid:
+
+            # Leave _valid_codes empty to indicate no valid codes are available for this variable
+            # i.e. this variable should not have been included.
+            c = dict(c, _invalid=True, _valid_codes=[])
+        
         result.append(c)
     return result
 
@@ -166,11 +186,18 @@ def build_review_message(codings: list[dict]) -> tuple[str | None, int, int]:
 
     parts: list[str] = []
     if invalid:
-        lines = ["The following variables have invalid codes that must be corrected:"]
+        
+        lines = ["The following variables should be omitted or have invalid codes that must be corrected:"]
         for c in invalid:
-            lines.append(
-                f"  ID {c['id']}: you coded '{c['code']}' but valid codes are: {', '.join(c['_valid_codes'])}"
-            )
+            
+            if len(c['_valid_codes']) == 0:
+                lines.append(
+                    f"  ID {c['id']}: you coded '{c['code']}' but this variable should not have been included. DO NOT CODE THIS VARIABLE."
+                )
+            else:
+                lines.append(
+                    f"  ID {c['id']}: you coded '{c['code']}' but valid codes are: {', '.join(c['_valid_codes'])}"
+                )
         parts.append("\n".join(lines))
     if low_conf:
         ids = ", ".join(str(c["id"]) for c in low_conf)
@@ -189,6 +216,7 @@ def llm_stream(
     model: str,
     is_anthropic: bool,
     api_base: str | None,
+    bool_log: bool = False,
 ) -> str:
     kwargs: dict = {"stream": True}
     if not is_anthropic and not model.startswith("lm_studio/"):
@@ -197,7 +225,27 @@ def llm_stream(
         kwargs["api_base"] = api_base
 
     chunks: list[str] = []
-    response = cast(Any, litellm.completion(model=model, messages=messages, **kwargs))
+
+    # Log messages now
+    if bool_log:
+
+        os.makedirs("logs", exist_ok=True)
+
+        # Output the exact messages to the log
+        ts = get_timestamp()
+        with open(f"logs/{ts}_messages.log", "w", encoding="utf-8") as f:
+            for message in messages:
+                f.write(json.dumps(message, ensure_ascii=False, indent=2))
+                f.write("\n")
+
+    response = cast(
+        Any, 
+        litellm.completion(
+            model=model,
+            messages=messages, 
+            num_ctx=16384, # TODO: set this properly; chunk things; use RAG
+            **kwargs
+        ))
     for chunk in response:
         delta = chunk.choices[0].delta.content or ""
         if delta:
@@ -294,7 +342,7 @@ def code_document(
 
 
 def model_dirname(model: str) -> str:
-    return model.split("/")[-1]
+    return os.path.join("output", model.split("/")[-1].replace(":", "_"))
 
 
 def resolve_model_config(model: str, api_base: str | None) -> tuple[bool, str | None]:

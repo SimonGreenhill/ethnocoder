@@ -170,10 +170,10 @@ src/ethnocoder/     Installable package source
   dataset.py        Inspect/extract a CLDF dataset (--list, --extract)
   check.py          Document statistics (pages, chars, coded variables)
   init.py           Bootstrap a working directory from a CLDF dataset
-  data/PROMPT.md    Bundled default system prompt
 pyproject.toml      Package metadata and dependencies
 parameters.csv      Variable definitions
 codes.csv           Valid code values for option-type variables
+PROMPT.md           Bundled default system prompt
 gold/               Gold-standard codings (one JSON per source document)
 docs/               PDF source documents
 ```
