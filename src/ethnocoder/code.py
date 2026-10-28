@@ -10,10 +10,10 @@ from typing import Any, cast
 import pymupdf
 import logging
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
-import litellm
 from rich import print
 
-from ethnocoder.utils import strip_fences, parse_codings, get_timestamp, ollama_get_loaded_models
+from ethnocoder.models import llm_stream, get_max_context
+from ethnocoder.utils import parse_codings
 
 # Globals
 PROMPT_FILE = Path('.') / "PROMPT.md"
@@ -48,12 +48,16 @@ def load_variables(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
-def load_codes(path: Path) -> dict[str, list[dict]]:
+def load_codes(
+        path: Path,
+        bool_use_question_mark: bool = True,
+    ) -> dict[str, list[dict]]:
     """
     Load codes data from a CSV file and organize them by variable ID.
 
     Args:
         path (Path): The path to the CSV file containing codes data.
+        bool_use_question_mark (bool): Whether to include the "?" code as valid, to mean "no evidence found". Defaults to True.
 
     Returns:
         dict[str, list[dict]]: A dictionary mapping variable IDs to lists of code dictionaries.
@@ -71,8 +75,13 @@ def load_codes(path: Path) -> dict[str, list[dict]]:
             # If row["Parameter_ID"] is not already a key in the dictionary, add it with an empty list
             # and then append the current row.
             codes_by_var.setdefault(row["Parameter_ID"], []).append(row)
-    
-    
+
+    # If bool_use_question_mark is True, add the "?" code to each variable's list of codes if it's not already present.
+    if bool_use_question_mark:
+        for var_id, codes in codes_by_var.items():
+            if not any(code["Name"] == "?" for code in codes):
+                codes.append({"ID": f"{var_id}-?", "Parameter_ID": var_id, "Name": "?", "Description": "No evidence found"})
+
     return codes_by_var
 
 
@@ -151,11 +160,12 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
         description = (var.get("Description") or "").strip()
 
         # Add the variable ID and name to the prompt
-        lines.append(f"ID {var_id}: {name}")
+        lines.append(f"# {var_id}")
+        lines.append(name)
 
-        # If there's a description, add it with indentation
+        # If there's a description, add it immediately below the ID and name
         if description:
-            lines.append(f"  {description}")
+            lines.append(description)
 
         # Different datatypes require slightly different prompt text.
         # The "Option" type requires listing valid codes and instructing to assign one code from the list.
@@ -173,6 +183,12 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
 
                 # Append the formatted valid codes to the prompt.
                 lines.append("  Valid codes: " + " | ".join(code_strs))
+
+            else:
+
+                # Variable should have codes but they weren't found.
+                print(f"[red]Error: No valid codes found for variable {var_id}")
+                sys.exit(1)
 
             # Instruct to assign one code from the list above.
             lines.append("  Assign one code from the list above.")
@@ -212,7 +228,7 @@ def pack_batches(
     items: list,
     sizes: list[int],
     prefix_tokens: int,
-    context_budget: int | None,
+    context_budget: int,
     response_reserve_per_var: int,
 ) -> list[list]:
     """
@@ -222,18 +238,12 @@ def pack_batches(
         items (list): List of items to be batched.
         sizes (list[int]): List of token sizes corresponding to each item.
         prefix_tokens (int): Number of tokens reserved for the prefix.
-        context_budget (int | None): Maximum allowed tokens for a batch, including prefix.
+        context_budget (int): Maximum allowed tokens for a batch, including prefix.
         response_reserve_per_var (int): Tokens reserved per variable for the response.
 
     Returns:
         list[list]: List of batches, each containing a subset of items.
     """
-
-    # If no context budget is specified, return all items as a single batch.
-    if context_budget is None:
-
-        # The return type is a list of lists.
-        return [list(items)] if items else []
 
     # Initialize the list of batches and the current batch.
     batches: list[list] = []
@@ -417,131 +427,6 @@ def build_review_message(codings: list[dict]) -> tuple[str | None, int, int]:
     return review_msg, len(invalid), len(low_conf)
 
 
-def llm_stream(
-    messages: list[dict],
-    model: str,
-    is_anthropic: bool,
-    api_base: str | None,
-    bool_log: bool = False,
-) -> tuple[str, dict]:
-    """
-    Stream the LLM response for the given messages and return the final text.
-
-    Args:
-        messages: The list of messages to send to the LLM.
-        model: The model to use for the LLM.
-        is_anthropic: Whether the model is an Anthropic model.
-        api_base: The base URL for the API, if any.
-        bool_log: Whether to log the messages to a file.
-    
-    Returns:
-        final_text: The final text response from the LLM.
-        meta: Metadata about the LLM call, including elapsed time and model load status.
-    """
-
-    # Initialise. We will use litellm with the streaming option enabled.
-    kwargs: dict = {"stream": True}
-
-    # Add response_format option if using a non-Anthropic model that is not lm_studio.
-    if not is_anthropic and not model.startswith("lm_studio/"):
-        kwargs["response_format"] = {"type": "json_object"}
-
-    # Set api base url if provided.
-    if api_base:
-        kwargs["api_base"] = api_base
-
-    # If it's ollama, get the list of loaded models.
-    if model.startswith("ollama/"):
-        loaded_models = ollama_get_loaded_models()
-
-        if model[len("ollama/"):] not in loaded_models:
-            model_loaded = False
-        else:
-            model_loaded = True
-    else:
-        model_loaded = None
-
-    # Initialise the list to collect streamed chunks.
-    chunks: list[str] = []
-
-    # Log messages now
-    if bool_log:
-
-        os.makedirs("logs", exist_ok=True)
-
-        # Output the exact messages to a timestamped log
-        ts = get_timestamp()
-        with open(f"logs/{ts}_messages.log", "w", encoding="utf-8") as f:
-            for message in messages:
-                f.write(json.dumps(message, ensure_ascii=False, indent=2))
-                f.write("\n")
-
-    # Estimate token usage now.
-    prompt_tokens = litellm.token_counter(
-        model=model,       # e.g. "ollama/qwen3.5:35b"
-        messages=messages,
-    )
-
-    if prompt_tokens:
-        print(f"[blue]Estimated prompt tokens: {prompt_tokens}[/blue]")
-
-    # Start timer for call
-    started = time.perf_counter()
-
-    # Send the messages to the LLM and stream the response.
-    response = cast(
-        Any, 
-        litellm.completion(
-            model=model,
-            messages=messages,
-            stream_options={"include_usage": True},
-            extra_body={
-                "keep_alive": "24h",
-                "options": {"num_ctx": 16384}, # TODO: set this properly; chunk things; use RAG
-            },
-            **kwargs
-        )
-    )
-
-    usage = None
-
-    # Stream the response and collect chunks.
-    for chunk in response:
-        if getattr(chunk, "usage", None):
-            usage = chunk.usage
-
-        delta = chunk.choices[0].delta.content or ""
-        if delta:
-            chunks.append(delta)
-
-    # Combine the collected chunks into the final response text.
-    # Strip code fences just in case.
-    final_text = strip_fences("".join(chunks))
-
-    # Print the elapsed time for the LLM call
-    elapsed = time.perf_counter() - started
-
-    # # Create full response object for metadata reporting.
-    # response_from_chunks = litellm.stream_chunk_builder(chunks, messages=messages)
-
-    # Create metadata dictionary for the LLM call.
-    meta = {
-        "elapsed": f"{elapsed:.2f}",
-        "model_loaded": model_loaded,
-        # "prompt_tokens": response_from_chunks.usage.prompt_tokens,
-        # "completion_tokens": response_from_chunks.usage.completion_tokens
-    }
-
-    if usage:
-        meta["prompt_tokens"] = usage.prompt_tokens
-        meta["completion_tokens"] = usage.completion_tokens
-        meta["total_tokens"] = usage.total_tokens
-
-        print(f"[green]Actual prompt tokens: {usage.prompt_tokens}, Completion tokens: {usage.completion_tokens}, Total tokens: {usage.total_tokens}[/green]")
-
-    return final_text, meta
-
-
 def code_batch(
     variables: list[dict],
     codes_by_var: dict[str, list[dict]],
@@ -550,6 +435,9 @@ def code_batch(
     is_anthropic: bool,
     system_msg: dict,
     pdf_full: str,
+    context_budget: int,
+    bool_review: bool = False,
+    bool_thinking: bool = False,
 ) -> tuple[list[dict], str]:
     """
     Code one batch of variables in a fresh conversation.
@@ -565,9 +453,11 @@ def code_batch(
         is_anthropic: A boolean indicating if the model is Anthropic.
         system_msg: The system message dictionary for the conversation.
         pdf_full: The entire PDF text, prefaced by the PDF document name.
+        bool_review: A boolean indicating if a review pass should be performed when necessary.
 
     Returns:
-        A tuple containing the list of cleaned coding dictionaries and the final raw response text.
+        A tuple containing the list of cleaned coding dictionaries, the final raw response text, and the metadata dictionary.
+        The metadata dictionary contains information about the LLM response, including elapsed time and model load status for both the initial and review passes.
     """
 
     # Create the coding prompt for the current batch of variables.
@@ -579,7 +469,14 @@ def code_batch(
     messages = [system_msg, {"role": "user", "content": user_content}]
 
     # Stream the LLM response for the current batch of variables.
-    text, meta = llm_stream(messages, model, is_anthropic, api_base)
+    text, meta = llm_stream(
+        messages = messages,
+        model = model,
+        is_anthropic = is_anthropic,
+        api_base = api_base,
+        context_budget = context_budget,
+        bool_thinking = bool_thinking,
+    )
 
     # Parse the response text into coding dictionaries.
     codings = parse_codings(text) or []
@@ -587,8 +484,13 @@ def code_batch(
     # Validate the option codes against the provided codes by variable and the current batch of variables.
     codings = validate_option_codes(codings, codes_by_var, variables)
 
-    # Check if we need a review pass based on the validity and confidence of the codings.
-    review_msg, n_invalid, n_low = build_review_message(codings)
+    # Review if requested
+    review_msg = None
+
+    if bool_review:
+
+        # Check if we need a review pass based on the validity and confidence of the codings.
+        review_msg, n_invalid, n_low = build_review_message(codings)
 
     # If no review is needed, return the cleaned codings and the original response text.
     if review_msg is None:
@@ -605,7 +507,14 @@ def code_batch(
     messages.append({"role": "user", "content": review_msg})
 
     # Ask the LLM to do better.
-    text2, meta2 = llm_stream(messages, model, is_anthropic, api_base)
+    text2, meta2 = llm_stream(
+        messages = messages,
+        model = model,
+        is_anthropic = is_anthropic,
+        api_base = api_base,
+        context_budget = context_budget,
+        bool_thinking = bool_thinking,
+    )
 
     # combine meta and meta2 into a single dictionary
     combined_meta = {
@@ -627,10 +536,12 @@ def code_document(
     api_base: str | None,
     is_anthropic: bool,
     messages: list[dict],
+    context_budget: int,
     pdf_full: str = "",
     out_dir: Path = Path("."),
-    context_budget: int | None = None,
     response_reserve_per_var: int = 250,
+    bool_review: bool = False,
+    bool_thinking: bool = False,
 ) -> list[dict]:
     """
     Code a PDF document by processing it in batches according to the context budget and response reserve.
@@ -648,6 +559,8 @@ def code_document(
         out_dir: The directory to save output files.
         context_budget: The maximum number of tokens to use per batch.
         response_reserve_per_var: The number of tokens to reserve for each variable's response.
+        bool_review: Whether to perform a review pass when necessary.
+        bool_thinking: Whether to enable thinking mode for the LLM.
     Returns:
         A list of coding dictionaries for all variables.
     """
@@ -670,7 +583,11 @@ def code_document(
     # Pack variables into batches based on their estimated token sizes and the context budget
     try:
         batches = pack_batches(
-            variables, sizes, prefix_tokens, context_budget, response_reserve_per_var
+            items = variables,
+            sizes = sizes,
+            prefix_tokens = prefix_tokens,
+            context_budget = context_budget,
+            response_reserve_per_var = response_reserve_per_var,
         )
     except ValueError as e:
         sys.exit(f"Error: {e}")
@@ -700,7 +617,16 @@ def code_document(
 
         # Code this batch
         clean, text, meta = code_batch(
-            batch, codes_by_var, model, api_base, is_anthropic, system_msg, pdf_full
+            variables = batch, 
+            codes_by_var = codes_by_var,
+            model = model,
+            api_base = api_base,
+            is_anthropic = is_anthropic,
+            system_msg = system_msg,
+            pdf_full = pdf_full,
+            context_budget = context_budget,
+            bool_review = bool_review,
+            bool_thinking = bool_thinking,
         )
 
         # Add results from this batch to the overall output
@@ -772,16 +698,48 @@ def resolve_model_config(model: str, api_base: str | None) -> tuple[bool, str | 
 
     return is_anthropic, api_base
 
+def validate_request(model: str | None, context_budget: int) -> None:
+    """
+    Validate the request parameters for coding a PDF.
+
+    Args:
+        model: The model string.
+        context_budget: Token budget per request.
+
+    Raises:
+        SystemExit: If validation fails.
+    """
+
+    if model is None:
+        print("[red]Error: --model is required[/red]", file=sys.stderr)
+        sys.exit(1)
+
+    if context_budget <= 0:
+        print("[red]Error: context_budget must be positive[/red]", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if context_budget exceeds the maximum context for the model
+    max_context = get_max_context(model)
+    if max_context is None:
+        print(f"[yellow]Warning: Unable to determine the maximum context for the model[/yellow]", file=sys.stderr)
+    elif context_budget > max_context:
+        print(f"[red]Error: context_budget {context_budget} exceeds the maximum context for the model ({max_context})[/red]", file=sys.stderr)
+        sys.exit(1)
+
+    # Inform the user that the budget is OK
+    print(f"[blue]Using context budget of {context_budget:,} tokens; model context window is {max_context:,}[/blue]", file=sys.stderr)
 
 def code_pdf(
     pdf_path: Path,
     variables: list[dict],
     codes_by_var: dict[str, list[dict]],
     model: str | None,
+    context_budget: int,
     api_base: str | None = None,
     max_chars: int | None = None,
-    context_budget: int | None = None,
     response_reserve_per_var: int = 250,
+    bool_review: bool = False,
+    bool_thinking: bool = False,
 ) -> list[dict]:
     """
     Code a PDF for trait/feature variables using a local or remote LLM.
@@ -791,14 +749,22 @@ def code_pdf(
         variables: List of variable dictionaries.
         codes_by_var: Dictionary mapping variable IDs to lists of code dictionaries.
         model: Model string (required).
+        context_budget: Token budget per request.
         api_base: API base URL, if any.
         max_chars: Maximum number of characters to extract from the PDF.
-        context_budget: Token budget per request.
         response_reserve_per_var: Reserved tokens per variable in the response.
+        bool_review: Whether to perform a review of the coding results, if there are invalid or low-confidence codings.
+        bool_thinking: Whether to enable thinking mode for the LLM.
 
     Returns:
         List of coding results as dictionaries.
     """
+
+    # Perform basic validation
+    validate_request(
+        model = model,
+        context_budget = context_budget,
+    )
 
     # Error if no model supplied
     if model is None:
@@ -826,9 +792,19 @@ def code_pdf(
     # Inform the user and code the document
     print(f"[blue]Coding [magenta]{pdf_path.name}[/magenta] ({len(variables)} variables) with [green bold]{model}[/green bold]…[/blue]", file=sys.stderr)
     return code_document(
-        pdf_path.stem, variables, codes_by_var, model, api_base, is_anthropic,
-        messages, pdf_full=pdf_full, out_dir=out_dir,
-        context_budget=context_budget, response_reserve_per_var=response_reserve_per_var,
+        pdf_stem = pdf_path.stem,
+        variables = variables,
+        codes_by_var = codes_by_var,
+        model = model,
+        api_base = api_base,
+        is_anthropic = is_anthropic,
+        messages = messages,
+        pdf_full=pdf_full,
+        out_dir=out_dir,
+        context_budget=context_budget, 
+        response_reserve_per_var=response_reserve_per_var,
+        bool_review = bool_review,
+        bool_thinking = bool_thinking,
     )
 
 
@@ -874,7 +850,7 @@ def add_subparser(subparsers) -> None:
     p.add_argument(
         "--context-budget",
         type=int,
-        default=None,
+        default=65536,
         help="Token budget per request. When set, variables are coded in batches that fit "
         "this budget (reusing a cached PDF prefix). Omit for a single request with all variables.",
     )
@@ -892,6 +868,12 @@ def add_subparser(subparsers) -> None:
 
     # dump: Dump messages JSON and exit
     p.add_argument("--dump", action="store_true", help="Dump messages JSON and exit")
+
+    # bool-review: Perform a review of the coding results where necessary
+    p.add_argument("--bool-review", action="store_true", help="Perform a review of the coding results where necessary")
+
+    # bool-thinking: Enable thinking mode for the LLM, if allowed by the model
+    p.add_argument("--bool-thinking", action="store_true", help="Enable thinking mode for the LLM, if allowed by the model")
 
     # Set the default function to run when this subparser is used
     p.set_defaults(func=_run)
@@ -945,12 +927,13 @@ def _run(args) -> None:
 
     # If we are dumping the messages, do so and return
     if args.dump:
-        pdf_text = extract_pdf_text(pdf_path, max_chars=args.max_chars)
-        pdf_full = f"Source document: {pdf_path.stem}\n\n{pdf_text}"
-        messages: list[dict] = [{"role": "system", "content": load_prompt(PROMPT_FILE)}]
-        coding_prompt = build_coding_prompt(variables, codes_by_var)
-        messages.append({"role": "user", "content": f"{pdf_full}\n\n---\n\n{coding_prompt}"})
-        print(json.dumps(messages, indent=2))
+        # pdf_text = extract_pdf_text(pdf_path, max_chars=args.max_chars)
+        # pdf_full = f"Source document: {pdf_path.stem}\n\n{pdf_text}"
+        # messages: list[dict] = [{"role": "system", "content": load_prompt(PROMPT_FILE)}]
+        # coding_prompt = build_coding_prompt(variables, codes_by_var)
+        # messages.append({"role": "user", "content": f"{pdf_full}\n\n---\n\n{coding_prompt}"})
+        # print(json.dumps(messages, indent=2))
+        print("[yellow]Dumping messages is currently disabled. Need to factorise prompt creation first.[/yellow]", file=sys.stderr)
         return
 
     # Code the PDF using the provided variables and codes
@@ -963,6 +946,8 @@ def _run(args) -> None:
         max_chars=args.max_chars,
         context_budget=args.context_budget,
         response_reserve_per_var=args.response_reserve_per_var,
+        bool_review=args.bool_review,
+        bool_thinking=args.bool_thinking,
     )
 
     # # Save the codings to a JSON file and report the location

@@ -6,10 +6,10 @@ TASK: For each variable, read the document carefully and assign the most appropr
 
 RULES:
 - Base every coding on direct evidence from the document.
-- Use the exact code values listed — do not invent new codes.
-- Set confidence to "absent" when the document contains no relevant evidence.
-- Keep justifications to one or two sentences and cite specific evidence.
-- You MUST code every variable listed, even if evidence is absent.
+- For variables whose values "0" indicate that the feature is absent for that language, ONLY code "0" when there is DIRECT EVIDENCE in the document that that feature is absent.
+- Set confidence to "absent" and set code value to "?" when the document contains no direct evidence pertaining to that variable.
+- Use the exact code values listed plus "?" as necessary — do not invent new codes.
+- Keep justifications to one or two sentences and cite specific evidence. Where there is no evidence (i.e. confidence is "absent" and code is "?"), set both quote and pages to `null`.
 
 OUTPUT FORMAT: Respond with a single JSON object and nothing else — no explanation, no markdown, no code fences.
 

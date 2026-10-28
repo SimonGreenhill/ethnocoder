@@ -1,0 +1,5 @@
+{
+    "openai/glm-5.3-flash" : {
+        "context_window": 1048576
+    }
+}
