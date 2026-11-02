@@ -1,3 +1,6 @@
+# The general flow is:
+# _run -> code_pdf -> code_document -> code_batch -> llm_stream().
+
 import argparse
 import csv
 import json
@@ -13,7 +16,7 @@ logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 from rich import print
 
 from ethnocoder.models import llm_stream, get_max_context
-from ethnocoder.utils import parse_codings
+from ethnocoder.utils import parse_codings, get_timestamp
 
 # Globals
 PROMPT_FILE = Path('.') / "PROMPT.md"
@@ -32,7 +35,6 @@ def load_prompt(path: Path) -> str:
     with open(path, encoding="utf-8") as f:
         return f.read()
 
-
 def load_variables(path: Path) -> list[dict]:
     """
     Load variables data from a CSV file.
@@ -46,7 +48,6 @@ def load_variables(path: Path) -> list[dict]:
 
     with open(path, encoding="utf-8") as f:
         return list(csv.DictReader(f))
-
 
 def load_codes(
         path: Path,
@@ -84,7 +85,6 @@ def load_codes(
 
     return codes_by_var
 
-
 def extract_pdf_text(pdf_path: Path, max_chars: int | None = None) -> str:
     """
     Get the text content from a PDF file.
@@ -117,7 +117,6 @@ def extract_pdf_text(pdf_path: Path, max_chars: int | None = None) -> str:
 
     # Return the final text (possibly truncated)
     return text
-
 
 def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) -> str:
     """
@@ -209,7 +208,6 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
 
     return "\n".join(lines)
 
-
 def estimate_tokens(text: str) -> int:
     """
     A rough estimate of the number of tokens in the given text.
@@ -222,7 +220,6 @@ def estimate_tokens(text: str) -> int:
     """
 
     return len(text) // 4
-
 
 def pack_batches(
     items: list,
@@ -290,7 +287,6 @@ def pack_batches(
     # Return the list of batches.
     return batches
 
-
 def clean_codings(codings: list[dict]) -> list[dict]:
     """
     Clean the codings by removing any internal keys that start with an underscore.
@@ -303,7 +299,6 @@ def clean_codings(codings: list[dict]) -> list[dict]:
     """
 
     return [{k: v for k, v in c.items() if not k.startswith("_")} for c in codings]
-
 
 def validate_option_codes(
     codings: list[dict],
@@ -360,7 +355,6 @@ def validate_option_codes(
         result.append(c)
 
     return result
-
 
 def build_review_message(codings: list[dict]) -> tuple[str | None, int, int]:
     """
@@ -426,7 +420,6 @@ def build_review_message(codings: list[dict]) -> tuple[str | None, int, int]:
     )
     return review_msg, len(invalid), len(low_conf)
 
-
 def code_batch(
     variables: list[dict],
     codes_by_var: dict[str, list[dict]],
@@ -434,11 +427,11 @@ def code_batch(
     api_base: str | None,
     is_anthropic: bool,
     system_msg: dict,
-    pdf_full: str,
+    # pdf_full: str,
     context_budget: int,
     bool_review: bool = False,
     bool_thinking: bool = False,
-) -> tuple[list[dict], str]:
+) -> tuple[list[dict], str, dict, str, str | None]:
     """
     Code one batch of variables in a fresh conversation.
 
@@ -452,18 +445,24 @@ def code_batch(
         api_base: The base URL for the API, if any.
         is_anthropic: A boolean indicating if the model is Anthropic.
         system_msg: The system message dictionary for the conversation.
-        pdf_full: The entire PDF text, prefaced by the PDF document name.
+#        pdf_full: The entire PDF text, prefaced by the PDF document name.
         bool_review: A boolean indicating if a review pass should be performed when necessary.
 
     Returns:
-        A tuple containing the list of cleaned coding dictionaries, the final raw response text, and the metadata dictionary.
+        A tuple:
+         - list of cleaned coding dictionaries
+         - the final raw response text
+         - the metadata dictionary
+         - the user content
+         - the review message (or None if no review was performed)
         The metadata dictionary contains information about the LLM response, including elapsed time and model load status for both the initial and review passes.
     """
 
     # Create the coding prompt for the current batch of variables.
     # This is the user prompt.
     coding_prompt = build_coding_prompt(variables, codes_by_var)
-    user_content = f"{pdf_full}\n\n---\n\n{coding_prompt}" if pdf_full else coding_prompt
+    user_content = coding_prompt
+    # user_content = f"{pdf_full}\n\n---\n\n{coding_prompt}" if pdf_full else coding_prompt
 
     # Create the initial message list by combining the system message and the user prompt.
     messages = [system_msg, {"role": "user", "content": user_content}]
@@ -477,6 +476,9 @@ def code_batch(
         context_budget = context_budget,
         bool_thinking = bool_thinking,
     )
+
+    # Add requested variables to meta
+    meta["variables"] = [var["ID"] for var in variables]
 
     # Parse the response text into coding dictionaries.
     codings = parse_codings(text) or []
@@ -494,7 +496,7 @@ def code_batch(
 
     # If no review is needed, return the cleaned codings and the original response text.
     if review_msg is None:
-        return clean_codings(codings), text, meta
+        return clean_codings(codings), text, meta, user_content, None
 
     # We will do a review pass.
     print(
@@ -518,15 +520,13 @@ def code_batch(
 
     # combine meta and meta2 into a single dictionary
     combined_meta = {
-        "elapsed_1": meta.get("elapsed", 0),
-        "model_loaded_1": meta.get("model_loaded", False),
+        **meta,
         "elapsed_2": meta2.get("elapsed", 0),
         "model_loaded_2": meta2.get("model_loaded", False)
     }
 
     # We won't try for another review, just return the cleaned codings from this pass.
-    return clean_codings(parse_codings(text2) or []), text2, combined_meta
-
+    return clean_codings(parse_codings(text2) or []), text2, combined_meta, user_content, review_msg
 
 def code_document(
     pdf_stem: str,
@@ -537,7 +537,7 @@ def code_document(
     is_anthropic: bool,
     messages: list[dict],
     context_budget: int,
-    pdf_full: str = "",
+    # pdf_full: str = "",
     out_dir: Path = Path("."),
     response_reserve_per_var: int = 250,
     bool_review: bool = False,
@@ -555,7 +555,7 @@ def code_document(
         api_base: The base URL for the API, if applicable.
         is_anthropic: Whether the model is an Anthropic model.
         messages: The initial system and user messages for the LLM.
-        pdf_full: The actual PDF content, with the PDF filename.
+        # pdf_full: The actual PDF content, with the PDF filename.
         out_dir: The directory to save output files.
         context_budget: The maximum number of tokens to use per batch.
         response_reserve_per_var: The number of tokens to reserve for each variable's response.
@@ -569,7 +569,7 @@ def code_document(
     system_msg = messages[0]
 
     # Estimate the number of tokens used by the system message and PDF file.
-    prefix_tokens = estimate_tokens(system_msg["content"]) + estimate_tokens(pdf_full)
+    prefix_tokens = estimate_tokens(system_msg["content"]) # + estimate_tokens(pdf_full)
 
     # Get a dict storing estimated number of tokens per variable definition
     var_size = {
@@ -586,16 +586,11 @@ def code_document(
             items = variables,
             sizes = sizes,
             prefix_tokens = prefix_tokens,
-            context_budget = context_budget,
+            context_budget = context_budget * 0.9, # Reserve 10% of the context budget for safety margin
             response_reserve_per_var = response_reserve_per_var,
         )
     except ValueError as e:
         sys.exit(f"Error: {e}")
-
-    # Prepare output paths
-    txt_path = out_dir / f"{pdf_stem}.txt"
-    json_path = out_dir / f"{pdf_stem}.json"
-    meta_path = out_dir / f"{pdf_stem}.log"
 
     # Initialise output for codings and raw text parts
     all_codings: list[dict] = []
@@ -603,6 +598,10 @@ def code_document(
 
     # Are there multiple batches?
     multi = len(batches) > 1
+
+    # Output the system message: it should NOT change across batches.
+    path_system_message = out_dir / f"{pdf_stem}_system_message.md"
+    path_system_message.write_text(system_msg["content"], encoding="utf-8")
 
     # Loop over each batch and code it
     for i, batch in enumerate(batches, 1):
@@ -616,14 +615,14 @@ def code_document(
             )
 
         # Code this batch
-        clean, text, meta = code_batch(
+        clean, text, meta, user_content, review_msg = code_batch(
             variables = batch, 
             codes_by_var = codes_by_var,
             model = model,
             api_base = api_base,
             is_anthropic = is_anthropic,
             system_msg = system_msg,
-            pdf_full = pdf_full,
+            # pdf_full = pdf_full,
             context_budget = context_budget,
             bool_review = bool_review,
             bool_thinking = bool_thinking,
@@ -635,6 +634,14 @@ def code_document(
         # Append the raw text for this batch to the list of raw parts, with a separator stating which batch it is
         raw_parts.append(f"=== batch {i} ===\n{text}" if multi else text)
 
+        # Prepare output paths, zero-padded with batch index
+        width = len(str(len(batches)))
+        txt_path = out_dir / f"{pdf_stem}_{i:0{width}}.txt"
+        json_path = out_dir / f"{pdf_stem}_{i:0{width}}.json"
+        meta_path = out_dir / f"{pdf_stem}_{i:0{width}}.log"
+        prompt_path = out_dir / f"{pdf_stem}_{i:0{width}}_prompt.md"
+        review_path = out_dir / f"{pdf_stem}_{i:0{width}}_review.md"
+
         # Output raw txt file and json file
         txt_path.write_text("\n\n".join(raw_parts), encoding="utf-8")
         json_path.write_text(json.dumps({"codings": all_codings}, indent=2), encoding="utf-8")
@@ -642,18 +649,31 @@ def code_document(
         # Output meta information for this batch
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
+        # Output prompt and review files if available
+        if prompt_path and user_content:
+            prompt_path.write_text(user_content, encoding="utf-8")
+        if review_path and review_msg:
+            review_path.write_text(review_msg, encoding="utf-8")
 
         # Inform the user
         print(f"[green]JSON saved → {json_path}[/green]", file=sys.stderr)
 
-    return all_codings
+        # Figure out from meta how long it took.
+        # If less than 5s and api_base begins "openai/", pause for 5s because we're allowed 2 requests per 10 seconds.
+        try:
+            if api_base and api_base.startswith("openai/") and "elapsed" in meta and float(meta["elapsed"]) < 5:
+                print(f"[yellow]Pausing for 5s to respect provider rate limit...[/yellow]", file=sys.stderr)
+                time.sleep(5)
+        except Exception as e:
+            print(f"[yellow]Warning: Failed to enforce provider rate limit: {e}[/yellow]", file=sys.stderr)
 
+    return all_codings
 
 def model_dirname(model: str) -> str:
     """
     Return the directory name for storing model outputs.
 
-    The directory is constructed as "output/{model_name}/{os}", where colons in the model name are replaced with underscores.
+    The directory is constructed as "output/{timestamp}/{model_name}/{os}", where colons in the model name are replaced with underscores.
 
     Args:
         model: The name of the model.
@@ -672,8 +692,20 @@ def model_dirname(model: str) -> str:
     else:
         os_name = "unknown_os"
 
-    return os.path.join("output", model.split("/")[-1].replace(":", "_"), os_name)
+    # Get timestamp
+    ts = get_timestamp()
 
+    ts_date, ts_time = ts.split("_")
+
+    out_dir = os.path.join(
+        "output",
+        ts_date,
+        ts_time,
+        model.split("/")[-1].replace(":", "_"), 
+        os_name,
+    )
+
+    return out_dir
 
 def resolve_model_config(model: str, api_base: str | None) -> tuple[bool, str | None]:
     """
@@ -781,8 +813,12 @@ def code_pdf(
     is_anthropic, api_base = resolve_model_config(model, api_base)
 
     # Set up inputs for LLM
-    pdf_full = f"Source document: {pdf_path.stem}\n\n{pdf_text}"
+    pdf_full = f"{pdf_path.stem}\n\n{pdf_text}"
+    # pdf_full = f"Source document: {pdf_path.stem}\n\n{pdf_text}"
     messages = [{"role": "system", "content": load_prompt(PROMPT_FILE)}]
+
+    # The system message includes the full PDF content at the end
+    messages[0]["content"] += f"\n\n{pdf_full}"
 
     # Prepare output directory for coded results
     out_dir = Path(model_dirname(model))
@@ -799,14 +835,13 @@ def code_pdf(
         api_base = api_base,
         is_anthropic = is_anthropic,
         messages = messages,
-        pdf_full=pdf_full,
+        # pdf_full=pdf_full,
         out_dir=out_dir,
         context_budget=context_budget, 
         response_reserve_per_var=response_reserve_per_var,
         bool_review = bool_review,
         bool_thinking = bool_thinking,
     )
-
 
 def add_subparser(subparsers) -> None:
     """
@@ -875,9 +910,11 @@ def add_subparser(subparsers) -> None:
     # bool-thinking: Enable thinking mode for the LLM, if allowed by the model
     p.add_argument("--bool-thinking", action="store_true", help="Enable thinking mode for the LLM, if allowed by the model")
 
+    # pdf-size: Estimate tokens of PDF
+    p.add_argument("--pdf-size", action="store_true", help="Estimate tokens of PDF")
+
     # Set the default function to run when this subparser is used
     p.set_defaults(func=_run)
-
 
 def _run(args) -> None:
     """
@@ -934,6 +971,12 @@ def _run(args) -> None:
         # messages.append({"role": "user", "content": f"{pdf_full}\n\n---\n\n{coding_prompt}"})
         # print(json.dumps(messages, indent=2))
         print("[yellow]Dumping messages is currently disabled. Need to factorise prompt creation first.[/yellow]", file=sys.stderr)
+        return
+
+    if args.pdf_size:
+        pdf_text = extract_pdf_text(pdf_path, max_chars=args.max_chars)
+        token_estimate = estimate_tokens(pdf_text)
+        print(f"[blue]Estimated token count of PDF file for {pdf_path.stem}: {token_estimate}[/blue]", file=sys.stderr)
         return
 
     # Code the PDF using the provided variables and codes

@@ -1,6 +1,8 @@
 You are an expert linguist coding source documents for the Grambank Database.
 
-You will receive a source document followed by a list of grammatical feature variables to code.
+Read the source document below.
+
+You will receive a list of grammatical feature variables to code.
 
 TASK: For each variable, read the document carefully and assign the most appropriate code.
 
@@ -29,3 +31,5 @@ The JSON must have this exact structure:
 }
 
 Your entire response must be valid JSON starting with { and ending with }.
+
+SOURCE DOCUMENT:
