@@ -8,7 +8,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
+import itertools
 
 import pymupdf
 import logging
@@ -222,8 +223,8 @@ def estimate_tokens(text: str) -> int:
     return len(text) // 4
 
 def pack_batches(
-    items: list,
-    sizes: list[int],
+    variables: list,
+    var_size: dict,
     prefix_tokens: int,
     context_budget: int,
     response_reserve_per_var: int,
@@ -232,14 +233,14 @@ def pack_batches(
     Pack items into batches based on their token sizes and context budget.
 
     Args:
-        items (list): List of items to be batched.
-        sizes (list[int]): List of token sizes corresponding to each item.
+        variables (list): List of variables to be batched.
+        var_size (dict): Dictionary mapping variable IDs to their estimated token sizes.
         prefix_tokens (int): Number of tokens reserved for the prefix.
         context_budget (int): Maximum allowed tokens for a batch, including prefix.
         response_reserve_per_var (int): Tokens reserved per variable for the response.
 
     Returns:
-        list[list]: List of batches, each containing a subset of items.
+        list[list]: List of batches, each containing a subset of variables.
     """
 
     # Initialize the list of batches and the current batch.
@@ -249,36 +250,102 @@ def pack_batches(
     # Initialise current tokens: the prefix size.
     current_tokens = prefix_tokens
 
-    # For each item and its corresponding size, determine if it fits in the current batch 
-    # or if a new batch is needed.
-    for item, size in zip(items, sizes):
+    # Load the feature grouping csv.
+    feature_grouping = {}
+    with open("feature_grouping_for_analysis.csv", newline="") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            feature_grouping[row["Feature_ID"]] = row["Main_domain"]
 
-        # Calculate the total cost of adding this item, including the response reserve.
-        cost = size + response_reserve_per_var
+    # Any Feature_ID's that end in a letter, put them together and ensure they have the same Main_domain.
+    grouped_features = {}
+    for feature_id, main_domain in feature_grouping.items():
 
-        # If the total cost exceeds the budget per batch...
-        if prefix_tokens + cost > context_budget:
+        # If the feature ID ends in a letter...
+        if feature_id[-1].isalpha():
 
-            # ...raise an error. This item cannot fit within the context budget.
-            raise ValueError(
-                f"A single variable needs {cost} tokens on top of a {prefix_tokens}-token "
-                f"prefix, exceeding the {context_budget}-token budget. "
-                "Increase --context-budget or shrink the PDF with --max-chars."
-            )
+            # ...get the base ID by removing the trailing letter...
+            base_id = feature_id[:-1]
 
-        # If adding this item would exceed the context budget for the current batch, start a new batch.
-        if current and current_tokens + cost > context_budget:
+            # ...and it to the master dict...
+            if base_id not in grouped_features:
+                grouped_features[base_id] = main_domain
 
-            # Append the current batch to the list of batches and start a new batch.
+            # ...but if it exists and has a different main domain, raise an error.
+            elif grouped_features[base_id] != main_domain:
+                raise ValueError(
+                    f"Feature_IDs ending with a letter must have the same Main_domain. Conflict for base ID {base_id}."
+                )
+        else:
+
+            # Normal ID, add it to the master list.
+            grouped_features[feature_id] = main_domain
+
+    # For items that are not one of the keys in grouped_features, add them with main domain "OTHER_MISC".
+    sum_misc = 0
+    for variable in variables:
+        if variable["ID"] not in grouped_features:
+            grouped_features[variable["ID"]] = "OTHER_MISC"
+            sum_misc += 1
+
+    if sum_misc > 0:
+        print(f"[blue]Found {sum_misc} uncategorised variables, adding to 'OTHER_MISC' group.[/blue]")
+
+    # Sort grouped_features by main domain, then by feature ID.
+    grouped_features = dict(sorted(grouped_features.items(), key=lambda x: (x[1], x[0])))
+
+    # Get the variable indices for quick lookup.
+    variable_indices = {variable["ID"]: i for i, variable in enumerate(variables)}
+
+    # Loop at each group.
+    for main_domain, group_items in itertools.groupby(grouped_features.items(), key=lambda x: x[1]):
+
+        # Loop at each item in the current group.
+        for variable_id, main_domain in group_items:
+
+            # Get the size of this variable from the var_size dictionary.
+            size = var_size[variable_id]
+
+        # # For each item and its corresponding size, determine if it fits in the current batch 
+        # # or if a new batch is needed.
+        # for variable, size in zip(variables, [var_size[i["ID"]] for i in variables]):
+
+            # Calculate the total cost of adding this item, including the response reserve.
+            cost = size + response_reserve_per_var
+
+            # If the total cost exceeds the budget per batch...
+            if prefix_tokens + cost > context_budget:
+
+                # ...raise an error. This item cannot fit within the context budget.
+                raise ValueError(
+                    f"A single variable needs {cost} tokens on top of a {prefix_tokens}-token "
+                    f"prefix, exceeding the {context_budget}-token budget. "
+                    "Increase --context-budget or shrink the PDF with --max-chars."
+                )
+
+            # If adding this item would exceed the context budget for the current batch, start a new batch.
+            if current and current_tokens + cost > context_budget:
+
+                # Append the current batch to the list of batches and start a new batch.
+                batches.append(current)
+                current = []
+
+                # Reset the current tokens to account for the prefix in the new batch.
+                current_tokens = prefix_tokens
+
+            # Add the current item to the batch and update the token count.
+            # We add the entry of <variables> associated with this <variable_id>.
+            # A bit clunky for backwards compatibility.
+            current.append(variables[variable_indices[variable_id]])
+            current_tokens += cost
+
+        # Append the current batch to the list of batches if it contains any items.
+        if current:
             batches.append(current)
-            current = []
 
-            # Reset the current tokens to account for the prefix in the new batch.
-            current_tokens = prefix_tokens
-
-        # Add the current item to the batch and update the token count.
-        current.append(item)
-        current_tokens += cost
+        # Reset the current batch and token count for the next main domain.
+        current = []
+        current_tokens = prefix_tokens
 
     # Append the last batch if it contains any items.
     if current:
@@ -370,7 +437,7 @@ def validate_response(
         # If the quote is not None, and doesn't contain ellipses, check that it exists in the PDF text.
         if quote is not None and "..." not in quote:
 
-            if pdf_full.find(quote) is None:
+            if pdf_full.find(quote) == -1:
                 c = dict(c, _quote_missing=True)
 
         # Append to the output.
@@ -414,6 +481,7 @@ def build_review_message(
         "n_duplicate": 0,
         "n_invalid": 0,
         "n_low_confidence": 0,
+        "n_quote_missing": 0,
     }
 
     # Find the missing codings.
@@ -440,8 +508,12 @@ def build_review_message(
     ]
     review_stats["n_low_confidence"] = len(low_conf)
 
+    # Find the codings with quotes that were not found in the PDF text.
+    quote_missing = [c for c in codings if c.get("_quote_missing")]
+    review_stats["n_quote_missing"] = len(quote_missing)
+
     # If everything looks good, return now.
-    if not missing and not superfluous and not duplicate and not invalid and not low_conf:
+    if not missing and not superfluous and not duplicate and not invalid and not low_conf and not quote_missing:
         return None, review_stats
 
     # Prepare the review message parts.
@@ -502,6 +574,13 @@ def build_review_message(
         parts.append(
             f"For variables {ids} you assigned low confidence. "
             "Re-read the document carefully for any overlooked evidence and correct these if possible."
+        )
+
+    # Quote missing codings.
+    if quote_missing:
+        ids = ", ".join(str(c["id"]) for c in quote_missing)
+        parts.append(
+            f"The following variables have quotes that were not found in the PDF text: {ids}"
         )
 
     # Combine all parts into the final review message.
@@ -627,6 +706,11 @@ def code_batch(
             f"[magenta]  → {review_stats['n_low_confidence']} low confidence codings[/magenta]",
             file=sys.stderr,
         )
+    if review_stats['n_quote_missing']:
+        print(
+            f"[magenta]  → {review_stats['n_quote_missing']} codings with quotes not found in the PDF text[/magenta]",
+            file=sys.stderr,
+        )
 
     # Append the previous response along with the review message.
     messages.append({"role": "assistant", "content": json.dumps({"codings": clean_codings(codings)}, indent=2)})
@@ -703,14 +787,11 @@ def code_document(
         for v in variables
     }
 
-    # Get a list of estimated token sizes for each variable
-    sizes = [var_size[v["ID"]] for v in variables]
-
     # Pack variables into batches based on their estimated token sizes and the context budget
     try:
         batches = pack_batches(
-            items = variables,
-            sizes = sizes,
+            variables = variables,
+            var_size = var_size,
             prefix_tokens = prefix_tokens,
             context_budget = context_budget * 0.9, # Reserve 10% of the context budget for safety margin
             response_reserve_per_var = response_reserve_per_var,
