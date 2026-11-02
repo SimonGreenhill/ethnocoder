@@ -103,10 +103,59 @@ def get_max_context(
         return max_context
     
     elif model.startswith("lm_studio/"):
-        raise NotImplementedError("get_max_context is not implemented yet.")
+        raise NotImplementedError("get_max_context is not implemented for lm_studio yet.")
     
     else:
-        raise NotImplementedError("get_max_context is not implemented yet.")
+        raise NotImplementedError("get_max_context is not implemented for generic models yet.")
+
+def check_model_demand(
+        model: str,
+        api_base: str | None = None,
+):
+    """
+    Check the demand for the specified model.
+
+    Args:
+        model (str): The model name.
+        api_base (str | None): The API base URL, if any.
+    """
+
+    # Get API key
+    api_key = os.environ["OPENAI_API_KEY"]  # Raises KeyError if it isn't set
+
+    # Call 
+    response = requests.get(
+        f"{api_base.rstrip('/')}/models",
+        headers={"Authorization": f"Bearer {api_key}"},  # omit if the API needs no auth
+        timeout=10,
+    )
+
+    # Raise an error if the request failed.
+    response.raise_for_status()
+
+    # Get models
+    models = response.json()["data"]
+
+    # For each dict in the list, find the one whose "id" matches the specified model.
+    model_id = model.replace("openai/", "")
+    for m in models:
+        if m["id"] == model_id:
+
+            demand = m.get("demand", None)
+
+            if demand is None:
+                print(f"  [yellow]Demand information for model {model} is not available[/yellow]")
+                return
+
+            if demand > 0:
+                print(f"  [yellow]Demand for model {model} is {m['demand']}[/yellow]")
+                return
+
+            else:
+                print(f"  [green]No demand for model [bold]{model}[/bold][/green]")
+                return
+
+    print(f"  [red]Model {model} not found in API response.[/red]")
 
 def llm_stream(
     messages: list[dict],
@@ -153,6 +202,12 @@ def llm_stream(
             model_loaded = False
         else:
             model_loaded = True
+
+    elif model.startswith("openai/"):
+        # If it's an OpenAI API call, check model demand.
+        check_model_demand(model=model, api_base=api_base)
+        model_loaded = None
+
     else:
         model_loaded = None
 
