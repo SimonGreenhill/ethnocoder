@@ -151,6 +151,7 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
         section = var.get("Section", "Variable descriptions")
         if section != current_section:
             lines.append(f"[{section}]")
+            lines.append("") # Newline after section heading.
             current_section = section
 
         # Get basic details for variable
@@ -162,10 +163,10 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
         # Add the variable ID and name to the prompt
         lines.append(f"# {var_id}")
         lines.append(name)
+        lines.append("") # Newline after variable name.
 
-        # If there's a description, add it immediately below the ID and name
-        if description:
-            lines.append(description)
+        # Add valid codes.
+        lines.append("## Valid codes")
 
         # Different datatypes require slightly different prompt text.
         # The "Option" type requires listing valid codes and instructing to assign one code from the list.
@@ -176,34 +177,33 @@ def build_coding_prompt(variables: list[dict], codes_by_var: dict[str, list]) ->
             if var_codes:
 
                 # Format the codes as "Name=Description" strings, truncating descriptions to 100 characters.
-                code_strs = [
-                    f"{c['Name']}={c['Description'][:100].rstrip()}"
-                    for c in var_codes
-                ]
+                for c in var_codes:
+                    lines.append(f"{c['Name']} = {c['Description'][:100].rstrip()}")
 
-                # Append the formatted valid codes to the prompt.
-                lines.append("  Valid codes: " + " | ".join(code_strs))
+                # Newline after listing valid codes.
+                lines.append("")
 
             else:
 
                 # Variable should have codes but they weren't found.
                 print(f"[red]Error: No valid codes found for variable {var_id}")
                 sys.exit(1)
-
-            # Instruct to assign one code from the list above.
-            lines.append("  Assign one code from the list above.")
         
         elif datatype == "Int":
             # For integer variables, instruct to assign an integer value.
-            lines.append("  Assign an integer value.")
+            lines.append("Assign an integer value.")
 
         elif datatype == "Float":
             # For float variables, instruct to assign a numeric value.
-            lines.append("  Assign a numeric value.")
+            lines.append("Assign a numeric value.")
 
         else:
             # For other datatypes, instruct to provide a brief text value.
-            lines.append("  Provide a brief text value.")
+            lines.append("Provide a brief text value.")
+
+        # If there's a description, add it below the valid codes section.
+        if description:
+            lines.append(description)
 
         lines.append("")
 
