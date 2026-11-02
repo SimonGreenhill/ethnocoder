@@ -300,19 +300,24 @@ def clean_codings(codings: list[dict]) -> list[dict]:
 
     return [{k: v for k, v in c.items() if not k.startswith("_")} for c in codings]
 
-def validate_option_codes(
+def validate_response(
     codings: list[dict],
     codes_by_var: dict[str, list[dict]],
     variables: list[dict],
+    pdf_full: str,
 ) -> list[dict]:
     """
-    Validate that the codes assigned to option variables are among the allowed codes.
+    Validate the response from the LLM.
+    1. Check that the codes assigned to option variables are among the allowed codes.
     Marks codings with "_invalid" and "_valid_codes" if the code is not valid.
+    2. Check that any quotes returned by the LLM actually appear in the full PDF text.
+    3. Check that all variables requested are in the response, and that no extra variables are included.
 
     Args:
         codings (list[dict]): List of coding dictionaries.
         codes_by_var (dict[str, list[dict]]): Dictionary mapping variable IDs to their allowed codes.
         variables (list[dict]): List of variable dictionaries.
+        pdf_full (str): Full text of the PDF being coded.
 
     Returns:
         list[dict]: List of validated coding dictionaries with "_invalid" and "_valid_codes" keys added where applicable.
@@ -328,6 +333,10 @@ def validate_option_codes(
         if vid in option_vars
     }
 
+    # Initialise a list of requested variable IDs, and those returned.
+    variables_requested = set(v["ID"] for v in variables)
+    variables_returned = set()
+
     # Initialize the result list to store validated codings
     result = []
     for c in codings:
@@ -335,71 +344,152 @@ def validate_option_codes(
         # Get the variable ID and the assigned code.
         vid = str(c.get("id", ""))
         code = c.get("code")
-        if code is None or code == "":
-            result.append(c)  # no code assigned (evidence absent) — nothing to validate
+
+        # Was this variable requested?
+        if vid not in variables_requested:
+            c = dict(c, _superfluous=True)
+            result.append(c)
             continue
+
+        # Has this variable been returned before? If so, it is a duplicate.
+        if vid in variables_returned:
+            c = dict(c, _duplicate=True)
+            result.append(c)
+            continue
+
+        # Add this variable to the set of requested variables, as it has been returned.
+        variables_returned.add(vid)
 
         # If the code is not in the list of valid codes, mark it as invalid and store the valid codes.
         if vid in valid and str(code) not in valid[vid]:
             c = dict(c, _invalid=True, _valid_codes=sorted(valid[vid]))
 
-        # If the coded variable is not even one of the requested variables, mark an error.
-        # Then the review prompt will tell the LLM it shouldn't have included this variable.
-        if vid not in valid:
+        # Check whether the quote exists in the PDF text.
+        quote = c.get("quote")
 
-            # Leave _valid_codes empty to indicate no valid codes are available for this variable
-            # i.e. this variable should not have been included.
-            c = dict(c, _invalid=True, _valid_codes=[])
+        # If the quote is not None, and doesn't contain ellipses, check that it exists in the PDF text.
+        if quote is not None and "..." not in quote:
+
+            if pdf_full.find(quote) is None:
+                c = dict(c, _quote_missing=True)
 
         # Append to the output.
         result.append(c)
 
+    # Get any variables from variables_requested that were not returned.
+    missing_variables = variables_requested - variables_returned
+    for vid in missing_variables:
+        result.append({"id": vid, "_missing": True})
+
     return result
 
-def build_review_message(codings: list[dict]) -> tuple[str | None, int, int]:
+def build_review_message(
+        codings: list[dict],
+    ) -> tuple[str | None, int, int]:
     """
     Prepare a review message for the codings, highlighting invalid codes and low confidence assignments.
+    Possible errors are:
+        - Invalid codes (_invalid, comes with _valid_codes)
+        - Missing variables (_missing)
+        - Duplicate variables (_duplicate)
+        - Superfluous variables (_superfluous)
 
     Args:
         codings (list[dict]): List of coding dictionaries.
 
     Returns:
-        tuple[str | None, int, int]: A tuple containing the review message (or None if no issues), the number of invalid codings, and the number of low confidence codings.
+        tuple[str | None, dict]: A tuple containing the review message (or None if no issues), and a dictionary with counts of different types of codings.
+            The dictionary has the following keys:
+                - n_missing: Number of missing variables.
+                - n_superfluous: Number of superfluous variables.
+                - n_duplicate: Number of duplicate variables.
+                - n_invalid: Number of invalid codes.
+                - n_low_confidence: Number of low confidence codings.
     """
 
-    # Find the invalid and low confidence codings.
+    # Initialise return dictionary
+    review_stats = {
+        "n_missing": 0,
+        "n_superfluous": 0,
+        "n_duplicate": 0,
+        "n_invalid": 0,
+        "n_low_confidence": 0,
+    }
+
+    # Find the missing codings.
+    missing = [c for c in codings if c.get("_missing")]
+    review_stats["n_missing"] = len(missing)
+
+    # Find the superfluous codings.
+    superfluous = [c for c in codings if c.get("_superfluous")]
+    review_stats["n_superfluous"] = len(superfluous)
+
+    # Find the duplicate codings.
+    duplicate = [c for c in codings if c.get("_duplicate")]
+    review_stats["n_duplicate"] = len(duplicate)
+
+    # Find the invalid codings.
     invalid = [c for c in codings if c.get("_invalid")]
+    review_stats["n_invalid"] = len(invalid)
+
+    # Find the low confidence codings.
     low_conf = [
         c for c in codings
-        if (c.get("confidence") in ("low", "absent") or c.get("evidence") == "absent")
-        and not c.get("_invalid")
+        if (c.get("confidence") == "low")
+        and not c.get("_invalid") and not c.get("_missing") and not c.get("_superfluous") and not c.get("_duplicate")
     ]
+    review_stats["n_low_confidence"] = len(low_conf)
 
     # If everything looks good, return now.
-    if not invalid and not low_conf:
-        return None, 0, 0
+    if not missing and not superfluous and not duplicate and not invalid and not low_conf:
+        return None, review_stats
 
     # Prepare the review message parts.
     parts: list[str] = []
+
+    # Missing variables.
+    if missing:
+
+        # Add a line listing all missing variable IDs.
+        lines = ["The following variables are missing. If there is no textual evidence for them in the document, set their values to '?':"]
+        lines.append(",".join(str(c['id']) for c in missing))
+
+        # Newline
+        parts.append("\n".join(lines))
+
+    # Superfluous variables.
+    if superfluous:
+
+        # Add a line listing all superfluous variable IDs.
+        lines = ["The following variables are superfluous and should be removed:"]
+        lines.append(",".join(str(c['id']) for c in superfluous))
+        
+        # Newline
+        parts.append("\n".join(lines))
+
+    # Duplicate variables.
+    if duplicate:
+
+        # Add a line listing all duplicate variable IDs.
+        lines = ["The following variables are duplicated and should be corrected:"]
+        lines.append(",".join(str(c['id']) for c in duplicate))
+        
+        # Newline
+        parts.append("\n".join(lines))
+
+    # Invalid codings.
     if invalid:
 
         # List all invalid codings with explanations.
-        lines = ["The following variables should be omitted or have invalid codes that must be corrected:"]
+        lines = ["The following variables have invalid codes that must be corrected:"]
         
         for c in invalid:
 
-            # Check if the variable should not have been included at all.
-            if len(c['_valid_codes']) == 0:
-                lines.append(
-                    f"  ID {c['id']}: you coded '{c['code']}' but this variable should not have been included. DO NOT CODE THIS VARIABLE."
-                )
-            else:
-
-                # The variable is correct, but the code provided is invalid.
-                # Remind the LLM of the valid codes.
-                lines.append(
-                    f"  ID {c['id']}: you coded '{c['code']}' but valid codes are: {', '.join(c['_valid_codes'])}"
-                )
+            # The variable is correct, but the code provided is invalid.
+            # Remind the LLM of the valid codes.
+            lines.append(
+                f"  ID {c['id']}: you coded '{c['code']}' but valid codes are: {', '.join(c['_valid_codes'])}"
+            )
 
         # Append the invalid coding lines to the review message parts.
         parts.append("\n".join(lines))
@@ -410,7 +500,7 @@ def build_review_message(codings: list[dict]) -> tuple[str | None, int, int]:
 
         # Ask the LLM to re-evaluate the low confidence codings.
         parts.append(
-            f"For variables {ids} you assigned low or absent confidence. "
+            f"For variables {ids} you assigned low confidence. "
             "Re-read the document carefully for any overlooked evidence and correct these if possible."
         )
 
@@ -418,7 +508,9 @@ def build_review_message(codings: list[dict]) -> tuple[str | None, int, int]:
     review_msg = "\n\n".join(parts) + (
         "\n\nReturn the complete corrected codings for ALL variables in the same JSON format."
     )
-    return review_msg, len(invalid), len(low_conf)
+
+    # Return.
+    return review_msg, review_stats
 
 def code_batch(
     variables: list[dict],
@@ -427,7 +519,7 @@ def code_batch(
     api_base: str | None,
     is_anthropic: bool,
     system_msg: dict,
-    # pdf_full: str,
+    pdf_full: str,
     context_budget: int,
     bool_review: bool = False,
     bool_thinking: bool = False,
@@ -435,7 +527,7 @@ def code_batch(
     """
     Code one batch of variables in a fresh conversation.
 
-    The prefix [system_msg, pdf_full] is identical across batches so a local
+    The prefix [system_msg] is identical across batches so a local
     server can reuse its KV cache for the PDF instead of reprocessing it.
     
     Args:
@@ -445,7 +537,7 @@ def code_batch(
         api_base: The base URL for the API, if any.
         is_anthropic: A boolean indicating if the model is Anthropic.
         system_msg: The system message dictionary for the conversation.
-#        pdf_full: The entire PDF text, prefaced by the PDF document name.
+        pdf_full: The entire PDF text, prefaced by the PDF document name.
         bool_review: A boolean indicating if a review pass should be performed when necessary.
 
     Returns:
@@ -483,8 +575,13 @@ def code_batch(
     # Parse the response text into coding dictionaries.
     codings = parse_codings(text) or []
 
-    # Validate the option codes against the provided codes by variable and the current batch of variables.
-    codings = validate_option_codes(codings, codes_by_var, variables)
+    # Validate the response against the provided codes by variable and the current batch of variables.
+    codings = validate_response(
+        codings = codings,
+        codes_by_var = codes_by_var,
+        variables = variables,
+        pdf_full = pdf_full,
+    )
 
     # Review if requested
     review_msg = None
@@ -492,7 +589,7 @@ def code_batch(
     if bool_review:
 
         # Check if we need a review pass based on the validity and confidence of the codings.
-        review_msg, n_invalid, n_low = build_review_message(codings)
+        review_msg, review_stats = build_review_message(codings)
 
     # If no review is needed, return the cleaned codings and the original response text.
     if review_msg is None:
@@ -500,9 +597,36 @@ def code_batch(
 
     # We will do a review pass.
     print(
-        f"[magenta]  → Review pass ({n_invalid} invalid code(s), {n_low} low-confidence)…[/magenta]",
+        f"[magenta]  → Review pass [/magenta]",
         file=sys.stderr,
     )
+
+    # State the problem(s) that have triggered the review.
+    if review_stats['n_missing']:
+        print(
+            f"[magenta]  → {review_stats['n_missing']} missing codings[/magenta]",
+            file=sys.stderr,
+        )
+    if review_stats['n_superfluous']:
+        print(
+            f"[magenta]  → {review_stats['n_superfluous']} superfluous codings[/magenta]",
+            file=sys.stderr,
+        )
+    if review_stats['n_duplicate']:
+        print(
+            f"[magenta]  → {review_stats['n_duplicate']} duplicate codings[/magenta]",
+            file=sys.stderr,
+        )
+    if review_stats['n_invalid']:
+        print(
+            f"[magenta]  → {review_stats['n_invalid']} invalid codings[/magenta]",
+            file=sys.stderr,
+        )
+    if review_stats['n_low_confidence']:
+        print(
+            f"[magenta]  → {review_stats['n_low_confidence']} low confidence codings[/magenta]",
+            file=sys.stderr,
+        )
 
     # Append the previous response along with the review message.
     messages.append({"role": "assistant", "content": json.dumps({"codings": clean_codings(codings)}, indent=2)})
@@ -537,11 +661,12 @@ def code_document(
     is_anthropic: bool,
     messages: list[dict],
     context_budget: int,
-    # pdf_full: str = "",
+    pdf_full: str = "",
     out_dir: Path = Path("."),
     response_reserve_per_var: int = 250,
     bool_review: bool = False,
     bool_thinking: bool = False,
+    bool_debug_batches: bool = False,
 ) -> list[dict]:
     """
     Code a PDF document by processing it in batches according to the context budget and response reserve.
@@ -555,12 +680,13 @@ def code_document(
         api_base: The base URL for the API, if applicable.
         is_anthropic: Whether the model is an Anthropic model.
         messages: The initial system and user messages for the LLM.
-        # pdf_full: The actual PDF content, with the PDF filename.
+        pdf_full: The actual PDF content, with the PDF filename.
         out_dir: The directory to save output files.
         context_budget: The maximum number of tokens to use per batch.
         response_reserve_per_var: The number of tokens to reserve for each variable's response.
         bool_review: Whether to perform a review pass when necessary.
         bool_thinking: Whether to enable thinking mode for the LLM.
+        bool_debug_batches: Whether to output debug information for batches without coding them.
     Returns:
         A list of coding dictionaries for all variables.
     """
@@ -599,6 +725,10 @@ def code_document(
     # Are there multiple batches?
     multi = len(batches) > 1
 
+    # Get the size of the numeral representing the total number of batches.
+    # This helps filename zero padding for batch indices below.
+    width = len(str(len(batches)))
+
     # Output the system message: it should NOT change across batches.
     path_system_message = out_dir / f"{pdf_stem}_system_message.md"
     path_system_message.write_text(system_msg["content"], encoding="utf-8")
@@ -610,9 +740,26 @@ def code_document(
         if multi:
             batch_tokens = prefix_tokens + sum(var_size[v["ID"]] for v in batch)
             print(
-                f"  [blue]Batch {i}/{len(batches)} ({len(batch)} vars, ~{batch_tokens // 1000}k tok)…[/blue]",
+                f"[blue]Batch {i}/{len(batches)} ({len(batch)} vars, ~{batch_tokens // 1000}k tok)…[/blue]",
                 file=sys.stderr,
             )
+
+        # If we are debugging batches, output batch info and continue.
+        if bool_debug_batches:
+
+            # Create output path for batch debug information
+            batch_debug_path = out_dir / f"{pdf_stem}_{i:0{width}}_batch_debug.txt"
+
+            # Output batch info
+            batch_debug_path.write_text(
+                f"Batch {i} of {len(batches)}\nVariables: {[v['ID'] for v in batch]}\n",
+                encoding="utf-8"
+            )
+
+            print(f"    [green]DEBUG BATCHES: output file {batch_debug_path}[/green]")
+
+            # Continue: when debugging batches, we do not code the batch, just output debug info.
+            continue
 
         # Code this batch
         clean, text, meta, user_content, review_msg = code_batch(
@@ -622,7 +769,7 @@ def code_document(
             api_base = api_base,
             is_anthropic = is_anthropic,
             system_msg = system_msg,
-            # pdf_full = pdf_full,
+            pdf_full = pdf_full,
             context_budget = context_budget,
             bool_review = bool_review,
             bool_thinking = bool_thinking,
@@ -635,7 +782,6 @@ def code_document(
         raw_parts.append(f"=== batch {i} ===\n{text}" if multi else text)
 
         # Prepare output paths, zero-padded with batch index
-        width = len(str(len(batches)))
         txt_path = out_dir / f"{pdf_stem}_{i:0{width}}.txt"
         json_path = out_dir / f"{pdf_stem}_{i:0{width}}.json"
         meta_path = out_dir / f"{pdf_stem}_{i:0{width}}.log"
@@ -700,9 +846,7 @@ def model_dirname(model: str) -> str:
     out_dir = os.path.join(
         "output",
         ts_date,
-        ts_time,
-        model.split("/")[-1].replace(":", "_"), 
-        os_name,
+        f"{ts_time}_{model.split('/')[-1].replace(':', '_')}_{os_name}",
     )
 
     return out_dir
@@ -772,6 +916,7 @@ def code_pdf(
     response_reserve_per_var: int = 250,
     bool_review: bool = False,
     bool_thinking: bool = False,
+    bool_debug_batches: bool = False,
 ) -> list[dict]:
     """
     Code a PDF for trait/feature variables using a local or remote LLM.
@@ -787,6 +932,7 @@ def code_pdf(
         response_reserve_per_var: Reserved tokens per variable in the response.
         bool_review: Whether to perform a review of the coding results, if there are invalid or low-confidence codings.
         bool_thinking: Whether to enable thinking mode for the LLM.
+        bool_debug_batches: Whether to output debug information for batches without coding them.
 
     Returns:
         List of coding results as dictionaries.
@@ -826,7 +972,10 @@ def code_pdf(
     out_dir.mkdir(exist_ok=True, parents=True)
 
     # Inform the user and code the document
-    print(f"[blue]Coding [magenta]{pdf_path.name}[/magenta] ({len(variables)} variables) with [green bold]{model}[/green bold]…[/blue]", file=sys.stderr)
+    infotext = f"[blue]Coding [magenta]{pdf_path.name}[/magenta] ({len(variables)} variables) with [green bold]{model}[/green bold]"
+    if bool_review:
+        infotext += " and[/blue] [magenta]review pass[/magenta] [blue]enabled"
+    print(f"{infotext}...[/blue]", file=sys.stderr)
     return code_document(
         pdf_stem = pdf_path.stem,
         variables = variables,
@@ -835,12 +984,13 @@ def code_pdf(
         api_base = api_base,
         is_anthropic = is_anthropic,
         messages = messages,
-        # pdf_full=pdf_full,
+        pdf_full=pdf_full,
         out_dir=out_dir,
         context_budget=context_budget, 
         response_reserve_per_var=response_reserve_per_var,
         bool_review = bool_review,
         bool_thinking = bool_thinking,
+        bool_debug_batches = bool_debug_batches,
     )
 
 def add_subparser(subparsers) -> None:
@@ -912,6 +1062,9 @@ def add_subparser(subparsers) -> None:
 
     # pdf-size: Estimate tokens of PDF
     p.add_argument("--pdf-size", action="store_true", help="Estimate tokens of PDF")
+
+    # bool-debug-batches: Output debug information for batches without coding them
+    p.add_argument("--bool-debug-batches", action="store_true", help="Output debug information for batches without coding them")
 
     # Set the default function to run when this subparser is used
     p.set_defaults(func=_run)
@@ -991,6 +1144,7 @@ def _run(args) -> None:
         response_reserve_per_var=args.response_reserve_per_var,
         bool_review=args.bool_review,
         bool_thinking=args.bool_thinking,
+        bool_debug_batches=args.bool_debug_batches,
     )
 
     # # Save the codings to a JSON file and report the location

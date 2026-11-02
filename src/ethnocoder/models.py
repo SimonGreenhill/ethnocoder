@@ -175,7 +175,7 @@ def llm_stream(
     )
 
     if prompt_tokens:
-        print(f"[blue]Estimated prompt tokens: {prompt_tokens:,}[/blue]")
+        print(f"  [blue]Estimated prompt tokens: {prompt_tokens:,}[/blue]")
 
     # Send the messages to the LLM and stream the response.
     # If it's a remote call (i.e. openai/), each attempt will have a timeout.
@@ -292,6 +292,6 @@ def llm_stream(
         meta["completion_tokens"] = usage.completion_tokens
         meta["total_tokens"] = usage.total_tokens
 
-        print(f"[green]Actual prompt tokens: {usage.prompt_tokens:,}, Completion tokens: {usage.completion_tokens:,}, Total tokens: {usage.total_tokens:,}[/green]")
+        print(f"  [green]Actual prompt tokens: {usage.prompt_tokens:,}, Completion tokens: {usage.completion_tokens:,}, Total tokens: {usage.total_tokens:,}[/green]")
 
     return final_text, meta
