@@ -84,7 +84,9 @@ def get_max_context(
         # Ask litellm, then try the custom models.json file.
         max_context = None
         try:
+            # print(f"Getting max context for model {model}")
             max_context = litellm.get_model_info(model)["max_input_tokens"]
+            # print(f"Max context for model {model} is {max_context}")
         except litellm.exceptions.ModelNotMappedError:
 
             # Try models.json file.
@@ -215,7 +217,7 @@ def llm_stream(
                         "keep_alive": "24h",
                         "options": {"num_ctx": context_budget},
                     },
-                    reasoning_effort = "medium" if bool_thinking else "none", # OpenAI / Gemini / DeepSeek API
+                    reasoning_effort = "medium" if bool_thinking else "minimal", # OpenAI / Gemini / DeepSeek API / Meta
                     output_config = { # Anthropic API
                         "effort": "medium" if bool_thinking else "low",
                     },
@@ -279,6 +281,7 @@ def llm_stream(
     # Create metadata dictionary for the LLM call.
     meta = {
         "elapsed": f"{elapsed:.2f}",
+        "model": model,
         "model_loaded": model_loaded,
         # "prompt_tokens": response_from_chunks.usage.prompt_tokens,
         # "completion_tokens": response_from_chunks.usage.completion_tokens
