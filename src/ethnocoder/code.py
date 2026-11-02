@@ -297,6 +297,11 @@ def pack_batches(
     # Get the variable indices for quick lookup.
     variable_indices = {variable["ID"]: i for i, variable in enumerate(variables)}
 
+    # Remove variables from grouped_features that are not present in the variables list.
+    for variable_id in list(grouped_features.keys()):
+        if variable_id not in variable_indices:
+            del grouped_features[variable_id]
+
     # Loop at each group.
     for main_domain, group_items in itertools.groupby(grouped_features.items(), key=lambda x: x[1]):
 
@@ -389,6 +394,9 @@ def validate_response(
     Returns:
         list[dict]: List of validated coding dictionaries with "_invalid" and "_valid_codes" keys added where applicable.
     """
+
+    # Remove newlines from the full PDF text for searching. Replace with single space.
+    pdf_full = pdf_full.replace("\n", " ")
 
     # Set option variables
     option_vars = {v["ID"] for v in variables if v.get("Datatype", "Option") == "Option"}
