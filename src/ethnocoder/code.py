@@ -23,15 +23,17 @@ from ethnocoder.utils import parse_codings, get_timestamp
 PROMPT_FILE = Path('.') / "PROMPT.md"
 
 class Coder():
-    def __init__(self, args):
+    def __init__(self, args = None):
         
         # Set args as class attribute for easy access.
         self.args = args
 
         # Set useful attributes from args for convenience.
         # Arguments to be passed to the LLM.
-        self.temperature = args.temperature
-        self.top_p = args.top_p
+        if hasattr(args, "temperature"):
+            self.temperature = args.temperature
+        if hasattr(args, "top_p"):
+            self.top_p = args.top_p
 
     def run(self):
         """
@@ -483,8 +485,8 @@ class Coder():
             list[dict]: List of validated coding dictionaries with "_invalid" and "_valid_codes" keys added where applicable.
         """
 
-        # Remove newlines from the full PDF text for searching. Replace with single space.
-        pdf_full = pdf_full.replace("\n", " ")
+        # Replace all runs of whitespace, newlines etc. Replace each with a single space.
+        pdf_full_normalized = " ".join(pdf_full.split())
 
         # Set option variables
         option_vars = {v["ID"] for v in variables if v.get("Datatype", "Option") == "Option"}
@@ -533,7 +535,11 @@ class Coder():
             # If the quote is not None, and doesn't contain ellipses, check that it exists in the PDF text.
             if quote is not None and "..." not in quote:
 
-                if pdf_full.find(quote) == -1:
+                # Normalise the quote before searching in the PDF text.
+                quote = " ".join(quote.split())
+
+                # Look for the normalized quote in the normalized PDF text.
+                if pdf_full_normalized.find(quote) == -1:
                     c = dict(c, _quote_missing=True)
 
             # Append to the output.
