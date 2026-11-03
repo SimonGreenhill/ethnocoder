@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from ethnocoder.code import code_pdf, load_codes, load_variables, model_dirname
+from ethnocoder.code import Coder #code_pdf, load_codes, load_variables, model_dirname
 
 DOCS_DIR = Path("docs")
 PARAMETERS_CSV = Path("parameters.csv")
@@ -32,12 +32,25 @@ def add_subparser(subparsers) -> None:
         default=250,
         help="Estimated output tokens reserved per variable when packing batches (default: 250)",
     )
+
+    # temperature: Set the temperature for the LLM
+    # Default is currently 0.4 because we want more deterministic rather than more creative.
+    p.add_argument("--temperature", type=float, default=0.4, help="Set the temperature for the LLM")
+
+    # top-p: Set the top-p (nucleus sampling) for the LLM
+    # Default is 0.95, recommended by SAIA for GLM 5.3 Flash.
+    p.add_argument("--top-p", type=float, default=0.95, help="Set the top-p (nucleus sampling) for the LLM")
+
     p.set_defaults(func=_run)
 
 
 def _run(args) -> None:
+
+    # Create coder
+    coder = Coder(args)
+
     max_bytes = args.max_mb * 1_000_000
-    out_dir = Path(model_dirname(args.model))
+    out_dir = Path(coder.model_dirname(args.model))
 
     pdfs = sorted(DOCS_DIR.glob("*.pdf"), key=lambda p: p.stat().st_size)
     eligible = [p for p in pdfs if p.stat().st_size <= max_bytes]
@@ -56,8 +69,8 @@ def _run(args) -> None:
         print("Nothing to do.")
         return
 
-    variables = load_variables(PARAMETERS_CSV)
-    codes_by_var = load_codes(CODES_CSV)
+    variables = coder.load_variables(PARAMETERS_CSV)
+    codes_by_var = coder.load_codes(CODES_CSV)
 
     ok = 0
     failed = []
@@ -68,7 +81,7 @@ def _run(args) -> None:
             print(f"  → would run: ethnocoder code --model {args.model} {pdf}")
             continue
         try:
-            codings = code_pdf(
+            codings = coder.code_pdf(
                 pdf, variables, codes_by_var, model=args.model,
                 context_budget=args.context_budget,
                 response_reserve_per_var=args.response_reserve_per_var,

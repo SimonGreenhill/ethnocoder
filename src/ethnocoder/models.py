@@ -165,6 +165,8 @@ def llm_stream(
     context_budget: int,
     bool_log: bool = False,
     bool_thinking: bool = False,
+    temperature: float = 0.4,
+    top_p: float = 0.95 # Suggested by SAIA documentation for GLM 5.3 Flash.
 ) -> tuple[str, dict]:
     """
     Stream the LLM response for the given messages and return the final text.
@@ -177,6 +179,8 @@ def llm_stream(
         context_budget: Token budget per request.
         bool_log: Whether to log the messages to a file.
         bool_thinking: Whether the LLM should display its thinking process.
+        temperature: The temperature to use for the LLM response. Higher values make the output more random, lower values make it more deterministic.
+        top_p: The top-p (nucleus sampling) value to use for the LLM response. Only consider the top tokens with cumulative probability top_p.
         
     Returns:
         final_text: The final text response from the LLM.
@@ -270,13 +274,18 @@ def llm_stream(
                     stream_options={"include_usage": True},
                     extra_body={
                         "keep_alive": "24h",
-                        "options": {"num_ctx": context_budget},
+                        "options": {
+                            "num_ctx": context_budget,
+                        },
                     },
-                    reasoning_effort = "medium" if bool_thinking else "minimal", # OpenAI / Gemini / DeepSeek API / Meta
+                    # max_tokens=1024, # This will cut off the output sharply when max_tokens is reached. We probably can't use this.
+                    reasoning_effort = "high" if bool_thinking else "low", # OpenAI / Gemini / DeepSeek API / Meta
                     output_config = { # Anthropic API
                         "effort": "medium" if bool_thinking else "low",
                     },
                     think = True if bool_thinking else False, # Ollama
+                    temperature=temperature,
+                    top_p=top_p,
                     **call_kwargs
                 )
             )
@@ -330,9 +339,6 @@ def llm_stream(
     # Print the elapsed time for the LLM call
     elapsed = time.perf_counter() - started
 
-    # # Create full response object for metadata reporting.
-    # response_from_chunks = litellm.stream_chunk_builder(chunks, messages=messages)
-
     # Create metadata dictionary for the LLM call.
     meta = {
         "elapsed": f"{elapsed:.2f}",
@@ -343,10 +349,20 @@ def llm_stream(
     }
 
     if usage:
-        meta["prompt_tokens"] = usage.prompt_tokens
-        meta["completion_tokens"] = usage.completion_tokens
-        meta["total_tokens"] = usage.total_tokens
 
+        # Dump usage stats into the meta log.
+        meta.update(usage.model_dump())
+
+        # Remove stats with None.
+        if 'completion_tokens_details' in meta:
+            for k,v in list(meta['completion_tokens_details'].items()):
+                if v is None:
+                    del meta['completion_tokens_details'][k]
+
+        if 'prompt_tokens_details' in meta and meta['prompt_tokens_details'] is None:
+            del meta['prompt_tokens_details']
+
+        # Inform the user.
         print(f"  [green]Actual prompt tokens: {usage.prompt_tokens:,}, Completion tokens: {usage.completion_tokens:,}, Total tokens: {usage.total_tokens:,}[/green]")
 
     return final_text, meta
