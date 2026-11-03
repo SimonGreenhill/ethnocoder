@@ -266,6 +266,23 @@ def llm_stream(
             if use_timeout:
                 call_kwargs["timeout"] = timeout_s
 
+            # All the customised things for reasoning effort:
+            # OpenAI / Gemini / DeepSeek API / Meta
+            call_kwargs["reasoning_effort"] = "high" if bool_thinking else "low"
+            # Anthropic API
+            call_kwargs["output_config"] = { 
+                "effort": "medium" if bool_thinking else "low",
+            }
+            # Ollama
+            call_kwargs["think"] = True if bool_thinking else False
+
+            # Temperature and top_p
+            call_kwargs["temperature"] = temperature
+            call_kwargs["top_p"] = top_p
+
+            # max_tokens: leaving this here to show it's possible
+            # call_kwargs["max_tokens"]=1024, # This will cut off the output sharply when max_tokens is reached.
+
             response = cast(
                 Any, 
                 litellm.completion(
@@ -278,14 +295,6 @@ def llm_stream(
                             "num_ctx": context_budget,
                         },
                     },
-                    # max_tokens=1024, # This will cut off the output sharply when max_tokens is reached. We probably can't use this.
-                    reasoning_effort = "high" if bool_thinking else "low", # OpenAI / Gemini / DeepSeek API / Meta
-                    output_config = { # Anthropic API
-                        "effort": "medium" if bool_thinking else "low",
-                    },
-                    think = True if bool_thinking else False, # Ollama
-                    temperature=temperature,
-                    top_p=top_p,
                     **call_kwargs
                 )
             )
@@ -344,8 +353,7 @@ def llm_stream(
         "elapsed": f"{elapsed:.2f}",
         "model": model,
         "model_loaded": model_loaded,
-        # "prompt_tokens": response_from_chunks.usage.prompt_tokens,
-        # "completion_tokens": response_from_chunks.usage.completion_tokens
+        "call_kwargs": call_kwargs,
     }
 
     if usage:
