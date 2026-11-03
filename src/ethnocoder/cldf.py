@@ -37,7 +37,7 @@ def build_source_index(value_rows: Iterable[dict]) -> dict[str, list[dict]]:
         for src in row["Source"]:
             key = strip_pages(src)
             if key:
-                index[key].append(row)
+                index[f"{row['Language_ID']}_{key}"].append(row)
     return index
 
 
@@ -53,6 +53,8 @@ def codings_for_source(
             by_param[param_id] = code_names.get(row["Code_ID"], row["Code_ID"])
         elif row["Value"] not in ("", None):
             by_param[param_id] = str(row["Value"])
+        elif row["Value"] is None:
+            by_param[param_id] = "?"
         else:
             by_param[param_id] = None
 
