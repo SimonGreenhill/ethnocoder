@@ -1,5 +1,14 @@
 {
     "openai/glm-5.3-flash" : {
         "context_window": 1048576
+    },
+    "openai/glm-5.3" : {
+        "context_window": 1048576
+    },
+    "openai/deepseek-v4.1-flash-1017": {
+        "context_window": 1048576
+    },
+    "openai/mistral-large-4-1t-a52b": {
+        "context_window": 1048576
     }
 }
