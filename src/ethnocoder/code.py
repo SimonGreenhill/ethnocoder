@@ -486,6 +486,8 @@ class Coder():
         """
 
         # Replace all runs of whitespace, newlines etc. Replace each with a single space.
+        # Note that this is just for quote-searching, not for sending to the LLM;
+        # that alteration is done slightly differently to retain some of the newline structure.
         pdf_full_normalized = " ".join(pdf_full.split())
 
         # Set option variables
