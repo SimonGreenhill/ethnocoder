@@ -6,6 +6,8 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
+from tqdm import tqdm
+from rich import print
 
 import pycldf
 
@@ -71,22 +73,28 @@ def copy_table(ds: pycldf.Dataset, which: str, dest_dir: Path) -> Path:
     return dst
 
 
-def write_gold(ds: pycldf.Dataset, out_dir: Path) -> int:
+def write_gold(ds: pycldf.Dataset, out_dir: Path, sources: list[str] | None = None) -> int:
     all_variables = list(cast(Iterable[dict], ds["ParameterTable"]))
     code_names = {row["ID"]: row["Name"] for row in cast(Iterable[dict], ds["CodeTable"])}
+
+    print("[blue]Building source index...[/blue]")
     source_index = build_source_index(cast(Iterable[dict], ds["ValueTable"]))
 
     gold_dir = out_dir / "gold"
     gold_dir.mkdir(parents=True, exist_ok=True)
-    for key in sorted(source_index):
+    n_written = 0
+    for key in tqdm(sorted(source_index), desc="Writing gold files"):
+        if sources and not any(src in key for src in sources):
+            continue
         codings = [
             c for c in codings_for_source(source_index[key], all_variables, code_names)
             if c["code"] is not None
         ]
         out_path = gold_dir / f"{key}.json"
         out_path.write_text(json.dumps(codings, indent=2), encoding="utf-8")
-        print(f"{key:40s}  {len(codings):3d}/{len(all_variables)} coded → {out_path}")
-    return len(source_index)
+        print(f"  [blue]{key:40s}  {len(codings):3d}/{len(all_variables)} coded → {out_path}[/blue]")
+        n_written += 1
+    return n_written
 
 
 def list_sources(ds: pycldf.Dataset) -> None:
