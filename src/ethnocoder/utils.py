@@ -1,10 +1,12 @@
 import json
 from datetime import datetime
 import sys
-import requests
+import os
 from rich import print
+from pathlib import Path
 
 OLLAMA_URL = "http://127.0.0.1:11434"
+GRAMBANK_CLDF_DIR = Path(os.path.join("dataset", "grambank_1_0_3", "cldf"))
 
 def get_timestamp() -> str:
     """

@@ -240,7 +240,7 @@ def llm_stream(
     # If it's a remote call (i.e. openai/), each attempt will have a timeout.
     use_timeout = model.startswith("openai/")
     llm_provider = model.split("/")[0]
-    timeout_s = 300
+    timeout_s = 150
     max_attempts = 5 if use_timeout else 1
 
     # Prevent litellm from passing parameters to models that can't use them

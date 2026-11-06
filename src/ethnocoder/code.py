@@ -344,6 +344,7 @@ class Coder():
         with open("feature_grouping_for_analysis.csv", newline="") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
+                # feature_grouping[row["Feature_ID"]] = row["Finer_grouping"] # TODO: toggle switch these
                 feature_grouping[row["Feature_ID"]] = row["Main_domain"]
 
         # Any Feature_ID's that end in a letter, put them together and ensure they have the same Main_domain.
@@ -995,16 +996,16 @@ class Coder():
                 review_path.write_text(review_msg, encoding="utf-8")
 
             # Inform the user
-            print(f"[green]JSON saved → {json_path}[/green]", file=sys.stderr)
+            print(f"  [green]JSON saved → {json_path}[/green]", file=sys.stderr)
 
             # Figure out from meta how long it took.
             # If less than 5s and api_base begins "openai/", pause for 5s because we're allowed 2 requests per 10 seconds.
             try:
                 if api_base and api_base.startswith("openai/") and "elapsed" in meta and float(meta["elapsed"]) < 5:
-                    print(f"[yellow]Pausing for 5s to respect provider rate limit...[/yellow]", file=sys.stderr)
+                    print(f"  [yellow]Pausing for 5s to respect provider rate limit...[/yellow]", file=sys.stderr)
                     time.sleep(5)
             except Exception as e:
-                print(f"[yellow]Warning: Failed to enforce provider rate limit: {e}[/yellow]", file=sys.stderr)
+                print(f"  [yellow]Warning: Failed to enforce provider rate limit: {e}[/yellow]", file=sys.stderr)
 
         return all_codings
 
