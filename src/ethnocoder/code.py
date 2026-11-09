@@ -486,6 +486,10 @@ class Coder():
             list[dict]: List of validated coding dictionaries with "_invalid" and "_valid_codes" keys added where applicable.
         """
 
+        # If the JSON was invalid, simply tell the LLM to repeat the task.
+        if len(codings) == 1 and "message" in codings[0] and "Invalid JSON" in codings[0]["message"]:
+            return [{"invalid_json": True}]
+
         # Replace all runs of whitespace, newlines etc. Replace each with a single space.
         # Note that this is just for quote-searching, not for sending to the LLM;
         # that alteration is done slightly differently to retain some of the newline structure.
@@ -510,8 +514,14 @@ class Coder():
         for c in codings:
 
             # Get the variable ID and the assigned code.
-            vid = str(c.get("id", ""))
+            vid = c.get("id", None)
             code = c.get("code")
+
+            if vid is None:
+                continue # Skip codings with no variable ID. Possibly system message that will be dealt with elsewhere.
+
+            # Convert ID to string.
+            vid = str(vid)
 
             # Was this variable requested?
             if vid not in variables_requested:
@@ -590,6 +600,10 @@ class Coder():
             "n_low_confidence": 0,
             "n_quote_missing": 0,
         }
+
+        # If codings is a single list with entry {"invalid_json": True}, return a special message.
+        if len(codings) == 1 and codings[0].get("invalid_json"):
+            return "Invalid JSON detected. Please resubmit the coding.", review_stats
 
         # Find the missing codings.
         missing = [c for c in codings if c.get("_missing")]
@@ -791,38 +805,51 @@ class Coder():
         )
 
         # State the problem(s) that have triggered the review.
+        # Invalid JSON
+        if codings and codings[0].get("invalid_json"):
+            print(
+                f"[magenta]  → Invalid JSON detected[/magenta]",
+                file=sys.stderr,
+            )
+
+        # Missing codes
         if review_stats['n_missing']:
             print(
                 f"[magenta]  → {review_stats['n_missing']} missing codings[/magenta]",
                 file=sys.stderr,
             )
+        # Superfluous codings
         if review_stats['n_superfluous']:
             print(
                 f"[magenta]  → {review_stats['n_superfluous']} superfluous codings[/magenta]",
                 file=sys.stderr,
             )
+        # Duplicate codings
         if review_stats['n_duplicate']:
             print(
                 f"[magenta]  → {review_stats['n_duplicate']} duplicate codings[/magenta]",
                 file=sys.stderr,
             )
+        # Invalid codings
         if review_stats['n_invalid']:
             print(
                 f"[magenta]  → {review_stats['n_invalid']} invalid codings[/magenta]",
                 file=sys.stderr,
             )
+        # Low confidence codings
         if review_stats['n_low_confidence']:
             print(
                 f"[magenta]  → {review_stats['n_low_confidence']} low confidence codings[/magenta]",
                 file=sys.stderr,
             )
+        # Codings with quotes not found in the PDF text
         if review_stats['n_quote_missing']:
             print(
                 f"[magenta]  → {review_stats['n_quote_missing']} codings with quotes not found in the PDF text[/magenta]",
                 file=sys.stderr,
             )
 
-        # Append the previous response along with the review message.
+        # Append the previous response (or the invalid JSON error message) along with the review message.
         messages.append({"role": "assistant", "content": json.dumps({"codings": self.clean_codings(codings)}, indent=2)})
         messages.append({"role": "user", "content": review_msg})
 
