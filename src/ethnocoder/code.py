@@ -545,6 +545,10 @@ class Coder():
             # Check whether the quote exists in the PDF text.
             quote = c.get("quote")
 
+            # If quote is the string "null", treat it as None.
+            if quote == "null":
+                quote = c["quote"] = None
+
             # If the quote is not None, and doesn't contain ellipses, check that it exists in the PDF text.
             if quote is not None and "..." not in quote:
 
@@ -554,6 +558,10 @@ class Coder():
                 # Look for the normalized quote in the normalized PDF text.
                 if pdf_full_normalized.find(quote) == -1:
                     c = dict(c, _quote_missing=True)
+
+            # If "pages" exists and is the string "null", change it to None.
+            if "pages" in c and c["pages"] == "null":
+                c["pages"] = None
 
             # Append to the output.
             result.append(c)
