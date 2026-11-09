@@ -1,4 +1,4 @@
-# 1. Argparse: gold file -g and results file -r.
+# 1. Argparse: gold file -g and model output file -m.
 # 2. Check both for duplicates.
 # 3. Check results file for missing or superfluous entries.
 # 4. Loop at gold file entries:
@@ -369,5 +369,5 @@ if __name__ == "__main__":
 
     main(
         fpath_gold=Path(args.fpath_gold),
-        fpath_model_output=Path(args.fpath_model_output)
+        fpath_model_output=Path(args.fpath_model_output),
     )

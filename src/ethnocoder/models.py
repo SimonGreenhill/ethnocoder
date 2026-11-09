@@ -124,14 +124,18 @@ def check_model_demand(
     api_key = os.environ["OPENAI_API_KEY"]  # Raises KeyError if it isn't set
 
     # Call 
-    response = requests.get(
-        f"{api_base.rstrip('/')}/models",
-        headers={"Authorization": f"Bearer {api_key}"},  # omit if the API needs no auth
-        timeout=10,
-    )
+    try:
+        response = requests.get(
+            f"{api_base.rstrip('/')}/models",
+            headers={"Authorization": f"Bearer {api_key}"},  # omit if the API needs no auth
+            timeout=10,
+        )
 
-    # Raise an error if the request failed.
-    response.raise_for_status()
+        # Raise an error if the request failed.
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"  [yellow]Failed to get models from API: {e}[/yellow]")
+        return
 
     # Get models
     models = response.json()["data"]
@@ -166,7 +170,8 @@ def llm_stream(
     bool_log: bool = False,
     bool_thinking: bool = False,
     temperature: float = 0.4,
-    top_p: float = 0.95 # Suggested by SAIA documentation for GLM 5.3 Flash.
+    top_p: float = 0.95, # Suggested by SAIA documentation for GLM 5.3 Flash.
+    bool_check_demand: bool = False,
 ) -> tuple[str, dict]:
     """
     Stream the LLM response for the given messages and return the final text.
@@ -207,7 +212,7 @@ def llm_stream(
         else:
             model_loaded = True
 
-    elif model.startswith("openai/"):
+    elif model.startswith("openai/") and bool_check_demand:
         # If it's an OpenAI API call, check model demand.
         check_model_demand(model=model, api_base=api_base)
         model_loaded = None

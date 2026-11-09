@@ -730,6 +730,7 @@ class Coder():
         system_msg: dict,
         pdf_full: str,
         context_budget: int,
+        batch_index: int,
         bool_review: bool = False,
         bool_thinking: bool = False,
     ) -> tuple[list[dict], str, dict, str, str | None]:
@@ -747,7 +748,10 @@ class Coder():
             is_anthropic: A boolean indicating if the model is Anthropic.
             system_msg: The system message dictionary for the conversation.
             pdf_full: The entire PDF text, prefaced by the PDF document name.
+            context_budget: The token budget for the LLM context.
+            batch_index: The index of the current batch being processed.
             bool_review: A boolean indicating if a review pass should be performed when necessary.
+            bool_thinking: A boolean indicating if the LLM should display its thinking process.
 
         Returns:
             A tuple:
@@ -778,6 +782,7 @@ class Coder():
             bool_thinking = bool_thinking,
             temperature = self.temperature,
             top_p = self.top_p,
+            bool_check_demand = True if batch_index == 1 else False, # check demand on first call only
         )
 
         # Add requested variables to meta
@@ -1002,6 +1007,7 @@ class Coder():
                 context_budget = context_budget,
                 bool_review = bool_review,
                 bool_thinking = bool_thinking,
+                batch_index = i,
             )
 
             # Add results from this batch to the overall output
