@@ -30,8 +30,11 @@ def main(
     # Gold is a list of dictionaries, with "id" and "code", and various other comments.
     gold_ids = [entry["id"] for entry in gold_data]
 
+    # Remove 
+    codings_with_ids = [entry for entry in model_output_data["codings"] if "id" in entry]
+
     # Results list is in "codings"
-    model_output_ids = [entry["id"] for entry in model_output_data["codings"]]
+    model_output_ids = [entry["id"] for entry in codings_with_ids]
 
     gold_duplicates = [id_ for id_ in gold_ids if gold_ids.count(id_) > 1]
     model_output_duplicates = [id_ for id_ in model_output_ids if model_output_ids.count(id_) > 1]
@@ -72,7 +75,7 @@ def main(
             continue
 
         # Get this entry from the model output file using the index.
-        model_output_entry = model_output_data["codings"][model_output_index]
+        model_output_entry = codings_with_ids[model_output_index]
 
         # Check the ID matches
         if model_output_entry["id"] != gold_id:
