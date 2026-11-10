@@ -473,8 +473,7 @@ class Coder():
         Validate the response from the LLM.
         1. Check that the codes assigned to option variables are among the allowed codes.
         Marks codings with "_invalid" and "_valid_codes" if the code is not valid.
-        2. Check that any quotes returned by the LLM actually appear in the full PDF text.
-        3. Check that all variables requested are in the response, and that no extra variables are included.
+        2. Check that all variables requested are in the response, and that no extra variables are included.
 
         Args:
             codings (list[dict]): List of coding dictionaries.
@@ -490,10 +489,10 @@ class Coder():
         if len(codings) == 1 and "message" in codings[0] and "Invalid JSON" in codings[0]["message"]:
             return [{"invalid_json": True}]
 
-        # Replace all runs of whitespace, newlines etc. Replace each with a single space.
-        # Note that this is just for quote-searching, not for sending to the LLM;
-        # that alteration is done slightly differently to retain some of the newline structure.
-        pdf_full_normalized = " ".join(pdf_full.split())
+        # # Replace all runs of whitespace, newlines etc. Replace each with a single space.
+        # # Note that this is just for quote-searching, not for sending to the LLM;
+        # # that alteration is done slightly differently to retain some of the newline structure.
+        # pdf_full_normalized = " ".join(pdf_full.split())
 
         # Set option variables
         option_vars = {v["ID"] for v in variables if v.get("Datatype", "Option") == "Option"}
@@ -542,22 +541,22 @@ class Coder():
             if vid in valid and str(code) not in valid[vid]:
                 c = dict(c, _invalid=True, _valid_codes=sorted(valid[vid]))
 
-            # Check whether the quote exists in the PDF text.
-            quote = c.get("quote")
+            # # Check whether the quote exists in the PDF text.
+            # quote = c.get("quote")
 
-            # If quote is the string "null", treat it as None.
-            if quote == "null":
-                quote = c["quote"] = None
+            # # If quote is the string "null", treat it as None.
+            # if quote == "null":
+            #     quote = c["quote"] = None
 
-            # If the quote is not None, and doesn't contain ellipses, check that it exists in the PDF text.
-            if quote is not None and "..." not in quote:
+            # # If the quote is not None, and doesn't contain ellipses, check that it exists in the PDF text.
+            # if quote is not None and "..." not in quote:
 
-                # Normalise the quote before searching in the PDF text.
-                quote = " ".join(quote.split())
+            #     # Normalise the quote before searching in the PDF text.
+            #     quote = " ".join(quote.split())
 
-                # Look for the normalized quote in the normalized PDF text.
-                if pdf_full_normalized.find(quote) == -1:
-                    c = dict(c, _quote_missing=True)
+            #     # Look for the normalized quote in the normalized PDF text.
+            #     if pdf_full_normalized.find(quote) == -1:
+            #         c = dict(c, _quote_missing=True)
 
             # If "pages" exists and is the string "null", change it to None.
             if "pages" in c and c["pages"] == "null":
