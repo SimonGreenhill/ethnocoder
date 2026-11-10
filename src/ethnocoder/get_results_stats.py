@@ -8,7 +8,10 @@ from rich import print
 
 from ethnocoder.utils import get_timestamp
 
-def main(directory: str) -> None:
+def main(
+        directory: str,
+        bool_output_to_terminal: bool = True,
+    ) -> None:
     """
     Load results TSVs from the specified directory and compute per-variable statistics.
     Output the results to a summary TSV file in the same directory.
@@ -16,6 +19,7 @@ def main(directory: str) -> None:
 
     Args:
         directory (str): Directory containing the results TSV files.
+        bool_output_to_terminal (bool): Whether to print the summary to the terminal. Defaults to True.
     """
 
     # From the directory, get all TSV files with format "results_all*.tsv"
@@ -72,7 +76,10 @@ def main(directory: str) -> None:
     summary_file = os.path.join(directory, f"summary_results_{get_timestamp()}.tsv")
     summary.to_csv(summary_file, sep="\t", index=False)
     print(f"[green]Summary written to {summary_file}[/green]")
-    print(summary)
+
+    # Output summary if requested
+    if bool_output_to_terminal:
+        print(summary)
 
 
 if __name__ == "__main__":
@@ -86,5 +93,6 @@ if __name__ == "__main__":
 
     main(
         directory=args.directory,
+        bool_output_to_terminal=True,
     )
 

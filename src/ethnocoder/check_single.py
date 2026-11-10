@@ -18,8 +18,12 @@ from ethnocoder.utils import GRAMBANK_CLDF_DIR
 
 def main(
         fpath_gold: Path,
-        fpath_model_output: Path
+        fpath_model_output: Path,
+        bool_output_to_terminal: bool = True,
 ) -> None:
+    """
+    Compare a single model output file against the gold file.
+    """
 
     # Open both files into json objects.
     with open(fpath_gold, "r") as f:
@@ -134,32 +138,34 @@ def main(
     results_dict = dict(sorted(results_dict.items(), key=sort_key))
 
     # Report results
-    for unique_identifier, count in results_dict.items():
-        gold_value, model_value = unique_identifier.split("_")
+    if bool_output_to_terminal:
+        for unique_identifier, count in results_dict.items():
+            gold_value, model_value = unique_identifier.split("_")
 
-        # Print different colours depending on correctness
-        if gold_value == model_value:
-            print(f"[green]Gold: {gold_value} | Model: {model_value}: {count:>3}[/green]")
-        elif model_value == "?":
-            print(f"[yellow]Gold: {gold_value} | Model: {model_value}: {count:>3}[/yellow]")
-        else:
-            print(f"[red]Gold: {gold_value} | Model: {model_value}: {count:>3}[/red]")
+            # Print different colours depending on correctness
+            if gold_value == model_value:
+                print(f"[green]Gold: {gold_value} | Model: {model_value}: {count:>3}[/green]")
+            elif model_value == "?":
+                print(f"[yellow]Gold: {gold_value} | Model: {model_value}: {count:>3}[/yellow]")
+            else:
+                print(f"[red]Gold: {gold_value} | Model: {model_value}: {count:>3}[/red]")
 
     # Report stats
-    total = sum(stats_dict.values())
-    print(f"\n[blue]Totals: ({total} values)[/blue]")
-    for key, value in stats_dict.items():
+    if bool_output_to_terminal:
+        total = sum(stats_dict.values())
+        print(f"\n[blue]Totals: ({total} values)[/blue]")
+        for key, value in stats_dict.items():
 
-        # Print colours
-        if key == "correct":
-            print(f"  [green]{key.capitalize()}:   {value:>3} ({value/total:.1%})[/green]")
-        elif key == "incorrect":
-            print(f"  [red]{key.capitalize()}: {value:>3} ({value/total:.1%})[/red]")
-        elif key == "hedged":
-            print(f"  [yellow]{key.capitalize()}:    {value:>3} ({value/total:.1%})[/yellow]")
-        else:
-            print(f"  [blue]{key.capitalize()}: {value:>3} ({value/total:.1%})[/blue]")
-        continue
+            # Print colours
+            if key == "correct":
+                print(f"  [green]{key.capitalize()}:   {value:>3} ({value/total:.1%})[/green]")
+            elif key == "incorrect":
+                print(f"  [red]{key.capitalize()}: {value:>3} ({value/total:.1%})[/red]")
+            elif key == "hedged":
+                print(f"  [yellow]{key.capitalize()}:    {value:>3} ({value/total:.1%})[/yellow]")
+            else:
+                print(f"  [blue]{key.capitalize()}: {value:>3} ({value/total:.1%})[/blue]")
+            continue
 
     # Call dedicated output function
     output_results(

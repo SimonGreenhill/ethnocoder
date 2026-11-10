@@ -10,6 +10,7 @@ RULES:
 - Base every coding on direct evidence from the document. Set confidence to "absent" and set code value to "?" when the document contains no direct evidence pertaining to that variable. Exceptions are described in the section "Absence of evidence" below.
 - Use the exact code values listed — do not invent new codes.
 - Keep justifications to one or two sentences and cite specific evidence. Where there is no evidence (i.e. confidence is "absent" and code is "?"), set both quote and pages to `null`.
+- Code only for the language named at the beginning of the user prompt. Do not provide codings for other languages that may be mentioned in the source document.
 
 OUTPUT FORMAT: Respond with a single minified JSON object and nothing else — no explanation, no markdown, no code fences.
 

@@ -49,6 +49,9 @@ class Coder():
             print(f"[red]Error: You must provide either a PDF file or a plaintext file, not both.[/red]", file=sys.stderr)
             sys.exit(1)
 
+        # Set language name
+        self.language_name = args.language
+
     def run(self):
         """
         Code the specified document using the provided variables and codes.
@@ -125,6 +128,7 @@ class Coder():
             variables = variables,
             codes_by_var = codes_by_var,
             model=self.args.model,
+            out_dir=self.args.out_dir,
             api_base=self.args.api_base,
             max_chars=self.args.max_chars,
             context_budget=self.args.context_budget,
@@ -267,6 +271,7 @@ class Coder():
 
         # Initialize the list of lines that will make up the prompt
         lines: list[str] = [
+            f"You are coding for the language: {self.language_name}.\n\n",
             "Code each variable below based on the source document above.",
             "For each, assign the most appropriate code and briefly justify your choice.\n",
         ]
@@ -1192,6 +1197,7 @@ class Coder():
         codes_by_var: dict[str, list[dict]],
         model: str | None,
         context_budget: int,
+        out_dir: Path | None = None,
         api_base: str | None = None,
         max_chars: int | None = None,
         response_reserve_per_var: int = 250,
@@ -1251,8 +1257,15 @@ class Coder():
         messages[0]["content"] += f"\n\n{document_text_full}"
 
         # Prepare output directory for coded results
-        out_dir = Path(self.model_dirname(model))
+        if out_dir is None:
+            out_dir = Path(self.model_dirname(model))
+        else:
+            out_dir = Path(out_dir)
+
+        # Inform the user about the output directory
         print(f"[blue]Preparing output directory {out_dir}…[/blue]", file=sys.stderr)
+        
+        # Create the output directory if it doesn't exist
         out_dir.mkdir(exist_ok=True, parents=True)
 
         # Inform the user and code the document
@@ -1301,6 +1314,9 @@ def add_subparser(subparsers) -> None:
     # Plaintext file to code. There must be either a PDF or a plaintext file provided.
     p.add_argument("-t", "--text", help="Plaintext file to code")
 
+    # Language name. Ensures the model codes for the appropriate language, in case others are mentioned in the text.
+    p.add_argument("-l", "--language", help="Language name for the document (ensures the model codes for the appropriate language)")
+
     # model: the LLM to use for coding the document
     p.add_argument("-m", "--model", default=None, help="LiteLLM model string (required)")
 
@@ -1312,6 +1328,9 @@ def add_subparser(subparsers) -> None:
 
     # ids: Comma-separated list of variable IDs to code
     p.add_argument("--ids", help="Comma-separated list of variable IDs to code (e.g. 2,3,5)")
+
+    # out-dir: Output directory for storing results
+    p.add_argument("--out-dir", default=None, help="Output directory for storing results")
 
     # api-base: Override API base URL for the LLM
     p.add_argument("--api-base", default=None, help="Override API base URL")
