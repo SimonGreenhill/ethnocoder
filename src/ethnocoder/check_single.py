@@ -27,7 +27,7 @@ def main(
     with open(fpath_model_output, "r") as f:
         model_output_data = json.load(f)
 
-    # Gold is a list of dictionaries, with "id" and "code".
+    # Gold is a list of dictionaries, with "id" and "code", and various other comments.
     gold_ids = [entry["id"] for entry in gold_data]
 
     # Results list is in "codings"
@@ -271,6 +271,10 @@ def output_results(
 
     # Merge df_gold into df_feature_grouping; call df_gold's "code" column "gold"
     df_gold = df_gold.rename(columns={"code": "gold"})
+    df_gold = df_gold.rename(columns={"comment": "human_comment"})
+    df_gold = df_gold.rename(columns={"source": "human_source"})
+    df_gold = df_gold.rename(columns={"source_comment": "human_source_comment"})
+    df_gold = df_gold.rename(columns={"coders": "human_coders"})
     df_feature_grouping = df_feature_grouping.merge(df_gold, how="left", left_on="Feature_ID", right_on="id")
 
     # Merge df_model_output into df_feature_grouping; call df_model_output's "code" column "model_output"
@@ -296,7 +300,22 @@ def output_results(
     # Reorder columns:
     # Feature_ID, gold, model_output, verdict, confidence, justification, quote, pages, Main_domain, Finer_grouping
     df_feature_grouping = df_feature_grouping[
-        ["Feature_ID", "gold", "model_output", "verdict", "confidence", "justification", "quote", "pages", "Main_domain", "Finer_grouping"]
+        [
+            "Feature_ID", 
+            "gold", 
+            "model_output", 
+            "verdict", 
+            "confidence", 
+            "justification", 
+            "quote", 
+            "pages", 
+            "human_comment", 
+            "human_source", 
+            "human_source_comment", 
+            "human_coders",
+            "Main_domain", 
+            "Finer_grouping",
+        ]
     ]
 
     # Sort by: 
