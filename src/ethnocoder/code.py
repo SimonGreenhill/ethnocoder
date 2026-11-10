@@ -1,5 +1,5 @@
 # The general flow is:
-# _run -> code_pdf -> code_document -> code_batch -> llm_stream().
+# _run -> code_document_outer -> code_document_inner -> code_batch -> llm_stream().
 
 import argparse
 import csv
@@ -35,16 +35,35 @@ class Coder():
         if hasattr(args, "top_p"):
             self.top_p = args.top_p
 
+        # Determine whether we are coding a PDF or a plaintext file.
+        self.bool_is_pdf = hasattr(self.args, "pdf") and self.args.pdf
+        self.bool_is_text = hasattr(self.args, "text") and self.args.text
+
+        # Check there is either a PDF or a plaintext file provided.
+        if not self.bool_is_pdf and not self.bool_is_text:
+            print(f"[red]Error: You must provide either a PDF file or a plaintext file to code.[/red]", file=sys.stderr)
+            sys.exit(1)
+
+        # If there is both, error.
+        if self.bool_is_pdf and self.bool_is_text:
+            print(f"[red]Error: You must provide either a PDF file or a plaintext file, not both.[/red]", file=sys.stderr)
+            sys.exit(1)
+
     def run(self):
         """
-        Code the specified PDF using the provided variables and codes.
+        Code the specified document using the provided variables and codes.
         This is what is run when calling `ethnocoder code` from the command line.
         """
 
-        # Get the PDF path from the command-line arguments and check if it exists
-        pdf_path = Path(self.args.pdf)
-        if not pdf_path.exists():
-            print(f"[red]Error: {pdf_path} not found[/red]", file=sys.stderr)
+        # Get the document path from the command-line arguments and check if it exists
+        if self.bool_is_pdf:
+            doc_path = Path(self.args.pdf)
+        elif self.bool_is_text:
+            doc_path = Path(self.args.text)
+
+        # If the document path does not exist, error
+        if not doc_path.exists():
+            print(f"[red]Error: {doc_path} not found[/red]", file=sys.stderr)
             sys.exit(1)
     
         # Get variables and codes from the provided paths
@@ -89,17 +108,22 @@ class Coder():
             print("[yellow]Dumping messages is currently disabled. Need to factorise prompt creation first.[/yellow]", file=sys.stderr)
             return
     
-        if self.args.pdf_size:
-            pdf_text = self.extract_pdf_text(pdf_path, max_chars=self.args.max_chars)
-            token_estimate = self.estimate_tokens(pdf_text)
-            print(f"[blue]Estimated token count of PDF file for {pdf_path.stem}: {token_estimate}[/blue]", file=sys.stderr)
+        if self.args.doc_size:
+
+            # Get document text
+            if self.bool_is_pdf:
+                doc_text = self.extract_pdf_text(doc_path, max_chars=self.args.max_chars)
+            elif self.bool_is_text:
+                doc_text = self.extract_text(doc_path, max_chars=self.args.max_chars)
+            token_estimate = self.estimate_tokens(doc_text)
+            print(f"[blue]Estimated token count of file for {doc_path.stem}: {token_estimate}[/blue]", file=sys.stderr)
             return
     
-        # Code the PDF using the provided variables and codes
-        codings = self.code_pdf(
-            pdf_path,
-            variables,
-            codes_by_var,
+        # Code the document using the provided variables and codes
+        codings = self.code_document_outer(
+            doc_path = doc_path,
+            variables = variables,
+            codes_by_var = codes_by_var,
             model=self.args.model,
             api_base=self.args.api_base,
             max_chars=self.args.max_chars,
@@ -205,6 +229,28 @@ class Coder():
             print(f"Warning: PDF text truncated to {max_chars:,} chars (was {original_len:,})", file=sys.stderr)
 
         # Return the final text (possibly truncated)
+        return text
+
+    def extract_text(self, doc_path: Path, max_chars: int | None = None) -> str:
+        """
+        Extract text from a plaintext file.
+
+        Args:
+            doc_path (Path): The path to the plaintext document.
+            max_chars (int | None): Maximum number of characters to return. If None, return all text.
+
+        Returns:
+            str: The extracted text from the document.
+        """
+
+        with open(doc_path, "r", encoding="utf-8") as f:
+            text = f.read()
+
+        if max_chars and len(text) > max_chars:
+            original_len = len(text)
+            text = text[:max_chars]
+            print(f"Warning: Text truncated to {max_chars:,} chars (was {original_len:,})", file=sys.stderr)
+
         return text
 
     def build_coding_prompt(self, variables: list[dict], codes_by_var: dict[str, list]) -> str:
@@ -415,7 +461,7 @@ class Coder():
                     raise ValueError(
                         f"A single variable needs {cost} tokens on top of a {prefix_tokens}-token "
                         f"prefix, exceeding the {context_budget}-token budget. "
-                        "Increase --context-budget or shrink the PDF with --max-chars."
+                        "Increase --context-budget or shrink the document with --max-chars."
                     )
 
                 # If adding this item would exceed the context budget for the current batch, start a new batch.
@@ -467,7 +513,7 @@ class Coder():
         codings: list[dict],
         codes_by_var: dict[str, list[dict]],
         variables: list[dict],
-        pdf_full: str,
+        document_text_full: str,
     ) -> list[dict]:
         """
         Validate the response from the LLM.
@@ -479,7 +525,7 @@ class Coder():
             codings (list[dict]): List of coding dictionaries.
             codes_by_var (dict[str, list[dict]]): Dictionary mapping variable IDs to their allowed codes.
             variables (list[dict]): List of variable dictionaries.
-            pdf_full (str): Full text of the PDF being coded.
+            document_text_full (str): Full text of the document being coded.
 
         Returns:
             list[dict]: List of validated coding dictionaries with "_invalid" and "_valid_codes" keys added where applicable.
@@ -492,7 +538,7 @@ class Coder():
         # # Replace all runs of whitespace, newlines etc. Replace each with a single space.
         # # Note that this is just for quote-searching, not for sending to the LLM;
         # # that alteration is done slightly differently to retain some of the newline structure.
-        # pdf_full_normalized = " ".join(pdf_full.split())
+        # doc_text_full_normalized = " ".join(doc_text_full.split())
 
         # Set option variables
         option_vars = {v["ID"] for v in variables if v.get("Datatype", "Option") == "Option"}
@@ -541,21 +587,21 @@ class Coder():
             if vid in valid and str(code) not in valid[vid]:
                 c = dict(c, _invalid=True, _valid_codes=sorted(valid[vid]))
 
-            # # Check whether the quote exists in the PDF text.
+            # # Check whether the quote exists in the document text.
             # quote = c.get("quote")
 
             # # If quote is the string "null", treat it as None.
             # if quote == "null":
             #     quote = c["quote"] = None
 
-            # # If the quote is not None, and doesn't contain ellipses, check that it exists in the PDF text.
+            # # If the quote is not None, and doesn't contain ellipses, check that it exists in the document text.
             # if quote is not None and "..." not in quote:
 
-            #     # Normalise the quote before searching in the PDF text.
+            #     # Normalise the quote before searching in the document text.
             #     quote = " ".join(quote.split())
 
-            #     # Look for the normalized quote in the normalized PDF text.
-            #     if pdf_full_normalized.find(quote) == -1:
+            #     # Look for the normalized quote in the normalized document text.
+            #     if doc_text_full_normalized.find(quote) == -1:
             #         c = dict(c, _quote_missing=True)
 
             # If "pages" exists and is the string "null", change it to None.
@@ -595,7 +641,7 @@ class Coder():
             - n_duplicate: Number of duplicate variables.
             - n_invalid: Number of invalid codes.
             - n_low_confidence: Number of low confidence codings.
-            - n_quote_missing: Number of codings with quotes missing in the PDF text.
+            - n_quote_missing: Number of codings with quotes missing in the document text.
         """
 
         # Initialise return dictionary
@@ -636,7 +682,7 @@ class Coder():
         ]
         review_stats["n_low_confidence"] = len(low_conf)
 
-        # Find the codings with quotes that were not found in the PDF text.
+        # Find the codings with quotes that were not found in the document text.
         quote_missing = [c for c in codings if c.get("_quote_missing")]
         review_stats["n_quote_missing"] = len(quote_missing)
 
@@ -708,7 +754,7 @@ class Coder():
         if quote_missing:
             ids = ", ".join(str(c["id"]) for c in quote_missing)
             parts.append(
-                f"The following variables have quotes that were not found in the PDF text: {ids}"
+                f"The following variables have quotes that were not found in the document text: {ids}"
             )
 
         # Combine all parts into the final review message.
@@ -727,7 +773,7 @@ class Coder():
         api_base: str | None,
         is_anthropic: bool,
         system_msg: dict,
-        pdf_full: str,
+        document_text_full: str,
         context_budget: int,
         batch_index: int,
         bool_review: bool = False,
@@ -737,7 +783,7 @@ class Coder():
         Code one batch of variables in a fresh conversation.
 
         The prefix [system_msg] is identical across batches so a local
-        server can reuse its KV cache for the PDF instead of reprocessing it.
+        server can reuse its KV cache for the document text instead of reprocessing it.
         
         Args:
             variables: A list of variable dictionaries to be coded.
@@ -746,7 +792,7 @@ class Coder():
             api_base: The base URL for the API, if any.
             is_anthropic: A boolean indicating if the model is Anthropic.
             system_msg: The system message dictionary for the conversation.
-            pdf_full: The entire PDF text, prefaced by the PDF document name.
+            document_text_full: The entire document text, prefaced by the document name.
             context_budget: The token budget for the LLM context.
             batch_index: The index of the current batch being processed.
             bool_review: A boolean indicating if a review pass should be performed when necessary.
@@ -766,7 +812,7 @@ class Coder():
         # This is the user prompt.
         coding_prompt = self.build_coding_prompt(variables, codes_by_var)
         user_content = coding_prompt
-        # user_content = f"{pdf_full}\n\n---\n\n{coding_prompt}" if pdf_full else coding_prompt
+        # user_content = f"{document_text_full}\n\n---\n\n{coding_prompt}" if document_text_full else coding_prompt
 
         # Create the initial message list by combining the system message and the user prompt.
         messages = [system_msg, {"role": "user", "content": user_content}]
@@ -795,7 +841,7 @@ class Coder():
             codings = codings,
             codes_by_var = codes_by_var,
             variables = variables,
-            pdf_full = pdf_full,
+            document_text_full = document_text_full,
         )
 
         # Review if requested
@@ -854,10 +900,10 @@ class Coder():
                 f"[magenta]  → {review_stats['n_low_confidence']} low confidence codings[/magenta]",
                 file=sys.stderr,
             )
-        # Codings with quotes not found in the PDF text
+        # Codings with quotes not found in the document text
         if review_stats['n_quote_missing']:
             print(
-                f"[magenta]  → {review_stats['n_quote_missing']} codings with quotes not found in the PDF text[/magenta]",
+                f"[magenta]  → {review_stats['n_quote_missing']} codings with quotes not found in the document text[/magenta]",
                 file=sys.stderr,
             )
 
@@ -887,9 +933,9 @@ class Coder():
         # We won't try for another review, just return the cleaned codings from this pass.
         return self.clean_codings(parse_codings(text2) or []), text2, combined_meta, user_content, review_msg
 
-    def code_document(
+    def code_document_inner(
         self,
-        pdf_stem: str,
+        document_stem: str,
         variables: list[dict],
         codes_by_var: dict[str, list[dict]],
         model: str,
@@ -897,7 +943,7 @@ class Coder():
         is_anthropic: bool,
         messages: list[dict],
         context_budget: int,
-        pdf_full: str = "",
+        document_text_full: str = "",
         out_dir: Path = Path("."),
         response_reserve_per_var: int = 250,
         bool_review: bool = False,
@@ -905,18 +951,18 @@ class Coder():
         bool_debug_batches: bool = False,
     ) -> list[dict]:
         """
-        Code a PDF document by processing it in batches according to the context budget and response reserve.
+        Code a document by processing it in batches according to the context budget and response reserve.
         Returns a list of coding dictionaries for all variables.
 
         Args:
-            pdf_stem: The stem of the PDF file name.
+            document_stem: The stem of the document file name.
             variables: A list of variable dictionaries to code.
             codes_by_var: A dictionary mapping variable IDs to their possible codes.
             model: The language model to use for coding.
             api_base: The base URL for the API, if applicable.
             is_anthropic: Whether the model is an Anthropic model.
             messages: The initial system and user messages for the LLM.
-            pdf_full: The actual PDF content, with the PDF filename.
+            document_text_full: The actual document content, with the document filename.
             out_dir: The directory to save output files.
             context_budget: The maximum number of tokens to use per batch.
             response_reserve_per_var: The number of tokens to reserve for each variable's response.
@@ -930,8 +976,8 @@ class Coder():
         # Get the system message: it's the first in the list.
         system_msg = messages[0]
 
-        # Estimate the number of tokens used by the system message and PDF file.
-        prefix_tokens = self.estimate_tokens(system_msg["content"]) # + estimate_tokens(pdf_full)
+        # Estimate the number of tokens used by the system message and document file.
+        prefix_tokens = self.estimate_tokens(system_msg["content"]) # + estimate_tokens(document_text_full)
 
         # Get a dict storing estimated number of tokens per variable definition
         var_size = {
@@ -963,7 +1009,7 @@ class Coder():
         width = len(str(len(batches)))
 
         # Output the system message: it should NOT change across batches.
-        path_system_message = out_dir / f"{pdf_stem}_system_message.md"
+        path_system_message = out_dir / f"{document_stem}_system_message.md"
         path_system_message.write_text(system_msg["content"], encoding="utf-8")
 
         # Loop over each batch and code it
@@ -981,7 +1027,7 @@ class Coder():
             if bool_debug_batches:
 
                 # Create output path for batch debug information
-                batch_debug_path = out_dir / f"{pdf_stem}_{i:0{width}}_batch_debug.txt"
+                batch_debug_path = out_dir / f"{document_stem}_{i:0{width}}_batch_debug.txt"
 
                 # Output batch info
                 batch_debug_path.write_text(
@@ -1002,7 +1048,7 @@ class Coder():
                 api_base = api_base,
                 is_anthropic = is_anthropic,
                 system_msg = system_msg,
-                pdf_full = pdf_full,
+                document_text_full = document_text_full,
                 context_budget = context_budget,
                 bool_review = bool_review,
                 bool_thinking = bool_thinking,
@@ -1016,11 +1062,11 @@ class Coder():
             raw_parts.append(f"=== batch {i} ===\n{text}" if multi else text)
 
             # Prepare output paths, zero-padded with batch index
-            txt_path = out_dir / f"{pdf_stem}_{i:0{width}}.txt"
-            json_path = out_dir / f"{pdf_stem}_{i:0{width}}.json"
-            meta_path = out_dir / f"{pdf_stem}_{i:0{width}}.log"
-            prompt_path = out_dir / f"{pdf_stem}_{i:0{width}}_prompt.md"
-            review_path = out_dir / f"{pdf_stem}_{i:0{width}}_review.md"
+            txt_path = out_dir / f"{document_stem}_{i:0{width}}.txt"
+            json_path = out_dir / f"{document_stem}_{i:0{width}}.json"
+            meta_path = out_dir / f"{document_stem}_{i:0{width}}.log"
+            prompt_path = out_dir / f"{document_stem}_{i:0{width}}_prompt.md"
+            review_path = out_dir / f"{document_stem}_{i:0{width}}_review.md"
 
             # Output raw txt file and json file
             txt_path.write_text("\n\n".join(raw_parts), encoding="utf-8")
@@ -1110,7 +1156,7 @@ class Coder():
 
     def validate_request(self, model: str | None, context_budget: int) -> None:
         """
-        Validate the request parameters for coding a PDF.
+        Validate the request parameters for coding a document.
 
         Args:
             model: The model string.
@@ -1139,9 +1185,9 @@ class Coder():
         # Inform the user that the budget is OK
         print(f"[blue]Using context budget of {context_budget:,} tokens; model context window is {max_context:,}[/blue]", file=sys.stderr)
 
-    def code_pdf(
+    def code_document_outer(
         self,
-        pdf_path: Path,
+        doc_path: Path,
         variables: list[dict],
         codes_by_var: dict[str, list[dict]],
         model: str | None,
@@ -1154,16 +1200,16 @@ class Coder():
         bool_debug_batches: bool = False,
     ) -> list[dict]:
         """
-        Code a PDF for trait/feature variables using a local or remote LLM.
+        Code a document for trait/feature variables using a local or remote LLM.
 
         Args:
-            pdf_path: Path to the PDF file.
+            doc_path: Path to the document file.
             variables: List of variable dictionaries.
             codes_by_var: Dictionary mapping variable IDs to lists of code dictionaries.
             model: Model string (required).
             context_budget: Token budget per request.
             api_base: API base URL, if any.
-            max_chars: Maximum number of characters to extract from the PDF.
+            max_chars: Maximum number of characters to extract from the document.
             response_reserve_per_var: Reserved tokens per variable in the response.
             bool_review: Whether to perform a review of the coding results, if there are invalid or low-confidence codings.
             bool_thinking: Whether to enable thinking mode for the LLM.
@@ -1185,21 +1231,24 @@ class Coder():
             sys.exit(1)
 
         # Inform the user
-        print(f"[blue]Extracting text from {pdf_path.name} ({pdf_path.stat().st_size / 1e6:.1f} MB)…[/blue]", file=sys.stderr)
+        print(f"[blue]Extracting text from {doc_path.name} ({doc_path.stat().st_size / 1e6:.1f} MB)…[/blue]", file=sys.stderr)
 
-        # Get PDF text
-        pdf_text = self.extract_pdf_text(pdf_path, max_chars=max_chars)
+        # Get document text
+        if self.bool_is_pdf:
+            doc_text = self.extract_pdf_text(doc_path, max_chars=max_chars)
+        elif self.bool_is_text:
+            doc_text = self.extract_text(doc_path, max_chars=max_chars)
 
         # Get model config
         is_anthropic, api_base = self.resolve_model_config(model, api_base)
 
         # Set up inputs for LLM
-        pdf_full = f"{pdf_path.stem}\n\n{pdf_text}"
-        # pdf_full = f"Source document: {pdf_path.stem}\n\n{pdf_text}"
+        document_text_full = f"{doc_path.stem}\n\n{doc_text}"
+        # document_text_full = f"Source document: {doc_path.stem}\n\n{doc_text}"
         messages = [{"role": "system", "content": self.load_prompt(PROMPT_FILE)}]
 
-        # The system message includes the full PDF content at the end
-        messages[0]["content"] += f"\n\n{pdf_full}"
+        # The system message includes the full document content at the end
+        messages[0]["content"] += f"\n\n{document_text_full}"
 
         # Prepare output directory for coded results
         out_dir = Path(self.model_dirname(model))
@@ -1207,19 +1256,19 @@ class Coder():
         out_dir.mkdir(exist_ok=True, parents=True)
 
         # Inform the user and code the document
-        infotext = f"[blue]Coding [magenta]{pdf_path.name}[/magenta] ({len(variables)} variables) with [green bold]{model}[/green bold]"
+        infotext = f"[blue]Coding [magenta]{doc_path.name}[/magenta] ({len(variables)} variables) with [green bold]{model}[/green bold]"
         if bool_review:
             infotext += " and[/blue] [magenta]review pass[/magenta] [blue]enabled"
         print(f"{infotext}...[/blue]", file=sys.stderr)
-        return self.code_document(
-            pdf_stem = pdf_path.stem,
+        return self.code_document_inner(
+            document_stem = doc_path.stem,
             variables = variables,
             codes_by_var = codes_by_var,
             model = model,
             api_base = api_base,
             is_anthropic = is_anthropic,
             messages = messages,
-            pdf_full=pdf_full,
+            document_text_full=document_text_full,
             out_dir=out_dir,
             context_budget=context_budget, 
             response_reserve_per_var=response_reserve_per_var,
@@ -1231,7 +1280,7 @@ class Coder():
 # Methods for module
 def add_subparser(subparsers) -> None:
     """
-    Add the "code" subparser for coding a PDF with a local or remote LLM.
+    Add the "code" subparser for coding a document with a local or remote LLM.
 
     Args:
         subparsers: The argparse subparsers object to which the "code" subparser will be added.
@@ -1240,17 +1289,20 @@ def add_subparser(subparsers) -> None:
     # Add the "code" subparser to the provided subparsers object
     p = subparsers.add_parser(
         "code",
-        description="Code a PDF for trait/feature variables using a local or remote LLM",
-        help="Code a PDF for trait/feature variables using a local or remote LLM",
+        description="Code a PDF or plaintext document for trait/feature variables using a local or remote LLM",
+        help="Code a PDF or plaintext document for trait/feature variables using a local or remote LLM",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     # Add arguments for the "code" subparser
-    # Positional argument for the PDF file to code
-    p.add_argument("pdf", help="PDF file to code")
+    # Argument for the PDF file to code. There must be either a PDF or a plaintext file provided.
+    p.add_argument("-p", "--pdf", help="PDF file to code")
 
-    # model: the LLM to use for coding the PDF
-    p.add_argument("--model", "-m", default=None, help="LiteLLM model string (required)")
+    # Plaintext file to code. There must be either a PDF or a plaintext file provided.
+    p.add_argument("-t", "--text", help="Plaintext file to code")
+
+    # model: the LLM to use for coding the document
+    p.add_argument("-m", "--model", default=None, help="LiteLLM model string (required)")
 
     # variables: CSV file containing the variables to code
     p.add_argument("--variables", default="parameters.csv", help="Variables CSV (default: parameters.csv)")
@@ -1264,8 +1316,8 @@ def add_subparser(subparsers) -> None:
     # api-base: Override API base URL for the LLM
     p.add_argument("--api-base", default=None, help="Override API base URL")
 
-    # max-chars: Truncate PDF text to this many characters
-    p.add_argument("--max-chars", type=int, default=None, help="Truncate PDF text to this many characters")
+    # max-chars: Truncate document text to this many characters
+    p.add_argument("--max-chars", type=int, default=None, help="Truncate document text to this many characters")
     
     # context-budget: Token budget per request
     p.add_argument(
@@ -1273,7 +1325,7 @@ def add_subparser(subparsers) -> None:
         type=int,
         default=65536,
         help="Token budget per request. When set, variables are coded in batches that fit "
-        "this budget (reusing a cached PDF prefix). Omit for a single request with all variables.",
+        "this budget (reusing a cached document prefix). Omit for a single request with all variables.",
     )
 
     # response-reserve-per-var: Estimated output tokens reserved per variable when packing batches
@@ -1296,8 +1348,8 @@ def add_subparser(subparsers) -> None:
     # bool-thinking: Enable thinking mode for the LLM, if allowed by the model
     p.add_argument("--bool-thinking", action="store_true", help="Enable thinking mode for the LLM, if allowed by the model")
 
-    # pdf-size: Estimate tokens of PDF
-    p.add_argument("--pdf-size", action="store_true", help="Estimate tokens of PDF")
+    # doc-size: Estimate tokens of document
+    p.add_argument("--doc-size", action="store_true", help="Estimate tokens of document")
 
     # bool-debug-batches: Output debug information for batches without coding them
     p.add_argument("--bool-debug-batches", action="store_true", help="Output debug information for batches without coding them")
@@ -1315,7 +1367,7 @@ def add_subparser(subparsers) -> None:
 
 def _run(args) -> None:
     """
-    Code the specified PDF using the provided variables and codes.
+    Code the specified document using the provided variables and codes.
     This is what is run when calling `ethnocoder code` from the command line.
 
     Args:
