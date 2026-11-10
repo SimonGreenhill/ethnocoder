@@ -6,6 +6,7 @@ import argparse
 from tqdm import tqdm
 from rich import print
 
+from ethnocoder.utils import get_timestamp
 
 def main(directory: str) -> None:
     """
@@ -54,12 +55,12 @@ def main(directory: str) -> None:
         total=pd.NamedAgg(column="verdict", aggfunc="count")
     ).reset_index()
 
-    # Summarise the percentages
-    summary["pct_correct"] = summary["correct"] / summary["total"] * 100
-    summary["pct_incorrect"] = summary["incorrect"] / summary["total"] * 100
-    summary["pct_hedged"] = summary["hedged"] / summary["total"] * 100
-    summary["pct_model_missing"] = summary["model_missing"] / summary["total"] * 100
-    summary["pct_gold_missing"] = summary["gold_missing"] / summary["total"] * 100
+    # Summarise the percentages. Truncate all to 1 decimal place. 
+    summary["pct_correct"] = (summary["correct"] / summary["total"] * 100).round(1)
+    summary["pct_incorrect"] = (summary["incorrect"] / summary["total"] * 100).round(1)
+    summary["pct_hedged"] = (summary["hedged"] / summary["total"] * 100).round(1)
+    summary["pct_model_missing"] = (summary["model_missing"] / summary["total"] * 100).round(1)
+    summary["pct_gold_missing"] = (summary["gold_missing"] / summary["total"] * 100).round(1)
 
     # Sort by:
     # - pct_correct in descending order
@@ -68,7 +69,7 @@ def main(directory: str) -> None:
     summary = summary.sort_values(by=["pct_correct", "pct_incorrect", "pct_gold_missing"], ascending=[False, True, True])
 
     # Output the summary to a TSV file and print it to the console
-    summary_file = os.path.join(directory, "summary_results.tsv")
+    summary_file = os.path.join(directory, f"summary_results_{get_timestamp()}.tsv")
     summary.to_csv(summary_file, sep="\t", index=False)
     print(f"[green]Summary written to {summary_file}[/green]")
     print(summary)
@@ -80,7 +81,7 @@ if __name__ == "__main__":
 
     # -d --directory of results TSVs
     parser = argparse.ArgumentParser(description="Get per-variable statistics from results TSVs")
-    parser.add_argument("-d", "--directory", type=str, required=True, help="Directory of results TSVs")
+    parser.add_argument("-d", "--directory", type=str, required=False, default=os.path.join("sandbox","summary_testing"), help="Directory of results TSVs")
     args = parser.parse_args()
 
     main(
