@@ -1,3 +1,5 @@
+# NB Assumes gold coding files have the same name as model output coding files.
+
 from pathlib import Path
 
 from ethnocoder.evaluate import load_codings_as_dict
@@ -28,8 +30,12 @@ def add_subparser(subparsers) -> None:
 def _run(args) -> None:
     overall = {"same": 0, "total": 0}
     for p in sorted(args.modeldir.glob("*.json")):
+
+        # Assumes gold coding files have the same name as model output coding files.
         coded = load_codings_as_dict(p)
         gold = load_codings_as_dict(GOLD_DIR / p.name)
+
+
         same, total = compare(gold, coded)
         m = same / total if total else 0
         print(f"{p.stem:20s}\t{same:5d}\t{total:5d}\t{m:0.4f}")
