@@ -323,9 +323,6 @@ if __name__ == "__main__":
     # NB DO NOT use -p as it clashes with -p in code.py, which this script passes args to.
     parser.add_argument("--prepare-only", action="store_true", help="Only prepare the input data without running the batch.")
 
-    # Arg to summarise
-    parser.add_argument("--summarise", action="store_true", help="Summarise the results after running the batch")
-
     # Params for coder
     # model: the LLM to use for coding the document
     parser.add_argument("-m", "--model", default=None, help="LiteLLM model string (required)")
@@ -407,8 +404,8 @@ if __name__ == "__main__":
             args = args,
         )
 
-    if args.summarise:
-        # Summarise the results after running the batch
+    # Summarise the results after running the batch
+    if output_batch_directory is not None:
         summarise_results(
             output_batch_directory = output_batch_directory,
             retlist = retlist,
