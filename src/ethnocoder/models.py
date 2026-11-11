@@ -300,6 +300,7 @@ def llm_stream(
                             "num_ctx": context_budget,
                         },
                     },
+                    return_response_headers=True,
                     **call_kwargs
                 )
             )
@@ -345,6 +346,27 @@ def llm_stream(
                 sys.exit(1)
             else:
                 print(f"[yellow]Timeout occurred on attempt {attempt}/{max_attempts}: {e}[yellow]")
+
+    # If response object exists, report headers with API calls remaining for hour/day/month, if they exist.
+    headers = response._hidden_params.get("additional_headers", {})
+
+    # Find:
+    # 'llm_provider-x-ratelimit-remaining-requests-10s'
+    # 'llm_provider-x-ratelimit-remaining-requests-hour'
+    # 'llm_provider-x-ratelimit-remaining-requests-day'
+    # 'llm_provider-x-ratelimit-remaining-requests-month' (may not exist)
+    remaining_requests = {
+        "10s": headers.get("llm_provider-x-ratelimit-remaining-requests-10s", None),
+        "hour": headers.get("llm_provider-x-ratelimit-remaining-requests-hour", None),
+        "day": headers.get("llm_provider-x-ratelimit-remaining-requests-day", None),
+        "month": headers.get("llm_provider-x-ratelimit-remaining-requests-month", None),
+    }
+
+    for period, remaining in remaining_requests.items():
+        if remaining is not None:
+            print(
+                f"    [magenta]Remaining requests for {period:<5}: {remaining:>4}[/magenta]"
+            )
 
     # Combine the collected chunks into the final response text.
     # Strip code fences just in case.

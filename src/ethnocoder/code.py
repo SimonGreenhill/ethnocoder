@@ -94,7 +94,7 @@ class Coder():
     
         # If we are printing the prompt, do so and return
         if self.args.print_prompt:
-            coding_prompt = self.build_coding_prompt(variables, codes_by_var)
+            coding_prompt = self.build_coding_prompt(variables, codes_by_var, "[FULL DOCUMENT TEXT GOES HERE]")
             print("=" * 60, "SYSTEM PROMPT", "=" * 60)
             print(self.load_prompt(PROMPT_FILE))
             print("=" * 60, "CODING PROMPT", "=" * 60)
@@ -1045,7 +1045,7 @@ class Coder():
 
         # Get a dict storing estimated number of tokens per variable definition
         var_size = {
-            v["ID"]: self.estimate_tokens(self.build_coding_prompt([v], codes_by_var))
+            v["ID"]: self.estimate_tokens(self.build_coding_prompt([v], codes_by_var, document_text_full))
             for v in variables
         }
 
