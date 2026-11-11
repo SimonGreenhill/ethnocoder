@@ -20,7 +20,7 @@ from typing import cast
 from pathlib import Path
 
 from ethnocoder import cldf
-from ethnocoder.utils import get_timestamp, GRAMBANK_CLDF_DIR
+from ethnocoder.utils import get_timestamp, GRAMBANK_CLDF_DIR, CONTEXT_BUDGET_DEFAULT
 from ethnocoder.code import Coder
 from ethnocoder.check_single import main as check_single_main
 from ethnocoder.collate_results import collate_results
@@ -349,7 +349,7 @@ if __name__ == "__main__":
     parser.add_argument(
             "--context-budget",
             type=int,
-            default=65536,
+            default=CONTEXT_BUDGET_DEFAULT,
             help="Token budget per request. When set, variables are coded in batches that fit "
             "this budget (reusing a cached document prefix). Omit for a single request with all variables.",
         )

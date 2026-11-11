@@ -6,7 +6,8 @@ from rich import print
 from pathlib import Path
 
 OLLAMA_URL = "http://127.0.0.1:11434"
-GRAMBANK_CLDF_DIR = Path(os.path.join("dataset", "grambank_1_0_3", "cldf"))
+GRAMBANK_CLDF_DIR = Path(os.path.join("dataset", "grambank-v3.0rc1", "cldf"))
+CONTEXT_BUDGET_DEFAULT = 262144  # quarter of a million
 
 def get_timestamp() -> str:
     """

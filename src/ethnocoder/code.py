@@ -18,7 +18,7 @@ logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 from rich import print
 
 from ethnocoder.models import llm_stream, get_max_context
-from ethnocoder.utils import parse_codings, get_timestamp
+from ethnocoder.utils import parse_codings, get_timestamp, CONTEXT_BUDGET_DEFAULT
 
 # Globals
 PROMPT_FILE = Path('.') / "PROMPT.md"
@@ -453,39 +453,42 @@ class Coder():
                 # feature_grouping[row["Feature_ID"]] = row["Finer_grouping"] # TODO: toggle switch these
                 feature_grouping[row["Feature_ID"]] = row["Main_domain"]
 
-        # Any Feature_ID's that end in a letter, put them together and ensure they have the same Main_domain.
-        grouped_features = {}
-        for feature_id, main_domain in feature_grouping.items():
+        # # Grambank v1.0.3, before binarised features.
+        # # Any Feature_ID's that end in a letter, put them together and ensure they have the same Main_domain.
+        # grouped_features = {}
+        # for feature_id, main_domain in feature_grouping.items():
 
-            # If the feature ID ends in a letter...
-            if feature_id[-1].isalpha():
+        #     # If the feature ID ends in a letter...
+        #     if feature_id[-1].isalpha():
 
-                # ...get the base ID by removing the trailing letter...
-                base_id = feature_id[:-1]
+        #         # ...get the base ID by removing the trailing letter...
+        #         base_id = feature_id[:-1]
 
-                # ...and it to the master dict...
-                if base_id not in grouped_features:
-                    grouped_features[base_id] = main_domain
+        #         # ...and it to the master dict...
+        #         if base_id not in grouped_features:
+        #             grouped_features[base_id] = main_domain
 
-                # ...but if it exists and has a different main domain, raise an error.
-                elif grouped_features[base_id] != main_domain:
-                    raise ValueError(
-                        f"Feature_IDs ending with a letter must have the same Main_domain. Conflict for base ID {base_id}."
-                    )
-            else:
+        #         # ...but if it exists and has a different main domain, raise an error.
+        #         elif grouped_features[base_id] != main_domain:
+        #             raise ValueError(
+        #                 f"Feature_IDs ending with a letter must have the same Main_domain. Conflict for base ID {base_id}."
+        #             )
+        #     else:
 
-                # Normal ID, add it to the master list.
-                grouped_features[feature_id] = main_domain
+        #         # Normal ID, add it to the master list.
+        #         grouped_features[feature_id] = main_domain
 
-        # For items that are not one of the keys in grouped_features, add them with main domain "OTHER_MISC".
-        sum_misc = 0
-        for variable in variables:
-            if variable["ID"] not in grouped_features:
-                grouped_features[variable["ID"]] = "OTHER_MISC"
-                sum_misc += 1
+        # # For items that are not one of the keys in grouped_features, add them with main domain "OTHER_MISC".
+        # sum_misc = 0
+        # for variable in variables:
+        #     if variable["ID"] not in grouped_features:
+        #         grouped_features[variable["ID"]] = "OTHER_MISC"
+        #         sum_misc += 1
 
-        if sum_misc > 0:
-            print(f"[blue]Found {sum_misc} uncategorised variables, adding to 'OTHER_MISC' group.[/blue]")
+        # if sum_misc > 0:
+        #     print(f"[blue]Found {sum_misc} uncategorised variables, adding to 'OTHER_MISC' group.[/blue]")
+
+        grouped_features = feature_grouping # Grambank 3
 
         # Sort grouped_features by main domain, then by feature ID.
         grouped_features = dict(sorted(grouped_features.items(), key=lambda x: (x[1], x[0])))
@@ -1402,7 +1405,7 @@ def add_subparser(subparsers) -> None:
     p.add_argument(
         "--context-budget",
         type=int,
-        default=65536,
+        default=CONTEXT_BUDGET_DEFAULT, # quarter of a million
         help="Token budget per request. When set, variables are coded in batches that fit "
         "this budget (reusing a cached document prefix). Omit for a single request with all variables.",
     )

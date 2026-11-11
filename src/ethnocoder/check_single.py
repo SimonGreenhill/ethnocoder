@@ -264,37 +264,37 @@ def output_results(
             continue
         df_feature_grouping[col] = df_feature_grouping[col].astype(str)
 
-    def merge_feature_ids(df):
+    # def merge_feature_ids(df):
 
-        # Get the base IDs by extracting the non-numeric prefix from Feature_ID
-        base_ids = df["Feature_ID"].str.replace(r"[A-Za-z]+$", "", regex=True)
+    #     # Get the base IDs by extracting the non-numeric prefix from Feature_ID
+    #     base_ids = df["Feature_ID"].str.replace(r"[A-Za-z]+$", "", regex=True)
 
-        # For each unique base ID, check if there are multiple rows with the same base ID and merge them if necessary.
-        for base_id in base_ids.unique():
+    #     # For each unique base ID, check if there are multiple rows with the same base ID and merge them if necessary.
+    #     for base_id in base_ids.unique():
 
-            # Get the subset of rows that start with the current base ID
-            subset = df[df["Feature_ID"].str.startswith(base_id)]
+    #         # Get the subset of rows that start with the current base ID
+    #         subset = df[df["Feature_ID"].str.startswith(base_id)]
 
-            # If there is more than one row with the same base ID, ensure all other columns have the same values and merge them.
-            if subset.shape[0] > 1:
+    #         # If there is more than one row with the same base ID, ensure all other columns have the same values and merge them.
+    #         if subset.shape[0] > 1:
 
-                # Check that all rows with the same base ID have identical values for all columns except Feature_ID
-                for col in df.columns:
-                    if col == "Feature_ID":
-                        continue
-                    assert subset[col].nunique() == 1, f"Mismatch in column {col} for base ID {base_id}"
+    #             # Check that all rows with the same base ID have identical values for all columns except Feature_ID
+    #             for col in df.columns:
+    #                 if col == "Feature_ID":
+    #                     continue
+    #                 assert subset[col].nunique() == 1, f"Mismatch in column {col} for base ID {base_id}"
 
-                # Merge the rows by keeping the first one and dropping the rest
-                df = df.drop(subset.index[1:])
+    #             # Merge the rows by keeping the first one and dropping the rest
+    #             df = df.drop(subset.index[1:])
 
-                # Update the Feature_ID of the remaining row to the base ID
-                df.loc[subset.index[0], "Feature_ID"] = base_id
-        return df
+    #             # Update the Feature_ID of the remaining row to the base ID
+    #             df.loc[subset.index[0], "Feature_ID"] = base_id
+    #     return df
 
-    # Apply the merging function to the feature grouping DataFrame.
-    # MANUALLY check they have the right Main_domain and Finer_grouping.
-    # (Output to TSV, upload to Google Docs, sort by Feature_ID, copy into existing sheet)
-    df_feature_grouping = merge_feature_ids(df_feature_grouping)
+    # # Apply the merging function to the feature grouping DataFrame.
+    # # MANUALLY check they have the right Main_domain and Finer_grouping.
+    # # (Output to TSV, upload to Google Docs, sort by Feature_ID, copy into existing sheet)
+    # df_feature_grouping = merge_feature_ids(df_feature_grouping)
 
     # Check all the variables are in df_feature_grouping.
     # Load the parameters csv from GRAMBANK_CLDF_DIR.
@@ -302,7 +302,12 @@ def output_results(
     df_parameters = pd.read_csv(fpath_parameters)
 
     # Check that all entries in the ID column of df_parameters are present in df_feature_grouping.
-    assert df_parameters["ID"].isin(df_feature_grouping["Feature_ID"]).all(), "Some parameter IDs are missing in the feature grouping."
+    if not df_parameters["ID"].isin(df_feature_grouping["Feature_ID"]).all():
+
+        # Print in red the missing IDs.
+        missing_ids = df_parameters.loc[~df_parameters["ID"].isin(df_feature_grouping["Feature_ID"]), "ID"]
+        print(f"[red]Missing IDs in feature grouping: {', '.join(missing_ids)}[/red]")
+        sys.exit(1)
 
     # Add gold and model output columns to TSV.
     # Create dataframes from gold_data and model_output_data.
@@ -364,12 +369,18 @@ def output_results(
 
     # Sort by: 
     # 1. verdict (correct, incorrect, hedged)
-    # 2. gold value (0, 1, 2, 3, ?)
-    # 3. model_output value (0, 1, 2, 3, ?)
-    # 4. Feature_ID
+    # 2. confidence (high, medium, low, absent)
+    # 3. gold value (0, 1, 2, 3, ?)
+    # 4. model_output value (0, 1, 2, 3, ?)
+    # 5. Feature_ID
     df_feature_grouping["verdict"] = pd.Categorical(
         df_feature_grouping["verdict"],
         categories=["correct", "incorrect", "hedged"],
+        ordered=True
+    )
+    df_feature_grouping["confidence"] = pd.Categorical(
+        df_feature_grouping["confidence"],
+        categories=["high", "medium", "low", "absent"],
         ordered=True
     )
     df_feature_grouping["gold"] = pd.Categorical(
@@ -383,7 +394,7 @@ def output_results(
         ordered=True
     )
     df_feature_grouping = df_feature_grouping.sort_values(
-        by=["verdict", "gold", "model_output", "Feature_ID"]
+        by=["verdict", "confidence", "gold", "model_output", "Feature_ID"]
     )
 
     # Inform the user we are writing the TSV files:
