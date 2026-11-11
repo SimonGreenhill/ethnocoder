@@ -110,38 +110,41 @@ def plot_accuracy_per_stats(
         # Get the stats filepath.
         stats_file = os.path.join(subdir, "stats.json")
 
-        # Get all log filepaths.
-        log_files = [os.path.join(subdir, f) for f in os.listdir(subdir) if f.endswith(".log")]
+        # CHANGED: stats["resources"] now holds this data.
+
+        # # Get all log filepaths.
+        # log_files = [os.path.join(subdir, f) for f in os.listdir(subdir) if f.endswith(".log")]
 
         # Skip any that don't have 
         if not os.path.exists(stats_file):
-            print(f"[yellow]Warning: stats.json not found in {subdir}[/yellow]")
+            if os.path.basename(subdir) != "summary":
+                print(f"[yellow]Warning: stats.json not found in {subdir}[/yellow]")
             continue
         with open(stats_file, "r") as f:
             dict_stats = json.load(f)
 
-        # 2. Sum the values of all d["elapsed"] and d["elapsed_2"] entries in all .log files for that subdirectory.
-        # Initialise totals for this subdirectory.
-        total_elapsed = 0
-        total_elapsed_2 = 0
-        total_reasoning_tokens = 0
+        # # 2. Sum the values of all d["elapsed"] and d["elapsed_2"] entries in all .log files for that subdirectory.
+        # # Initialise totals for this subdirectory.
+        # total_elapsed = 0
+        # total_elapsed_2 = 0
+        # total_reasoning_tokens = 0
 
-        # Process each log file for this subdirectory.
-        for log_file in log_files:
-            with open(log_file, "r") as f:
-                d = json.load(f)
-                total_elapsed += float(d.get("elapsed", 0))
-                total_elapsed_2 += float(d.get("elapsed_2", 0))
+        # # Process each log file for this subdirectory.
+        # for log_file in log_files:
+        #     with open(log_file, "r") as f:
+        #         d = json.load(f)
+        #         total_elapsed += float(d.get("elapsed", 0))
+        #         total_elapsed_2 += float(d.get("elapsed_2", 0))
 
-                # 3. Sum the reasoning tokens for this log entry.
-                total_reasoning_tokens += int(d.get("completion_tokens_details", {}).get("reasoning_tokens", 0))
+        #         # 3. Sum the reasoning tokens for this log entry.
+        #         total_reasoning_tokens += int(d.get("completion_tokens_details", {}).get("reasoning_tokens", 0))
 
         # 3c. Store the totals for this subdirectory in the results dict.
         results[os.path.basename(subdir)] = {
-            "elapsed_1": total_elapsed,
-            "elapsed_2": total_elapsed_2,
-            "total_time": total_elapsed + total_elapsed_2,
-            "total_reasoning_tokens": total_reasoning_tokens,
+            "elapsed_1": dict_stats["resources"]["elapsed_1"],
+            "elapsed_2": dict_stats["resources"]["elapsed_2"],
+            "total_time": dict_stats["resources"]["total_time"],
+            "total_reasoning_tokens": dict_stats["resources"]["total_reasoning_tokens"],
             "accuracy": dict_stats.get("totals", {}).get("correct_pct", None)
         }
 

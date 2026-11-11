@@ -225,7 +225,8 @@ def check_per_output(
                 break
 
         if retlist_entry is None:
-            print(f"[yellow]No retlist entry found for subdir {subdir}[/yellow]")
+            if subdir != "summary":
+                print(f"[yellow]No retlist entry found for subdir {subdir}[/yellow]")
             continue
 
         subdir_path = os.path.join(output_batch_directory, subdir)
@@ -305,7 +306,7 @@ def summarise_results(output_batch_directory, retlist, args):
 
     # Optionally, plot accuracy per stats if needed
     plot_accuracy_per_stats(
-        directory = summary_output_directory,
+        directory = output_batch_directory,
     )
 
 

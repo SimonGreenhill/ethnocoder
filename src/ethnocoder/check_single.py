@@ -9,6 +9,7 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 from rich import print
@@ -149,6 +150,36 @@ def main(
                 print(f"[yellow]Gold: {gold_value} | Model: {model_value}: {count:>3}[/yellow]")
             else:
                 print(f"[red]Gold: {gold_value} | Model: {model_value}: {count:>3}[/red]")
+
+    # Add logged data to stats dict: total time and total reasoning tokens consumed.
+    # Get the directory from fpath_model_output.
+    subdir = os.path.dirname(fpath_model_output)
+
+    # Get all log filepaths.
+    log_files = [os.path.join(subdir, f) for f in os.listdir(subdir) if f.endswith(".log")]
+
+    # Initialise totals for this subdirectory.
+    total_elapsed = 0
+    total_elapsed_2 = 0
+    total_reasoning_tokens = 0
+
+    # Process each log file for this subdirectory.
+    for log_file in log_files:
+        with open(log_file, "r") as f:
+            d = json.load(f)
+            total_elapsed += float(d.get("elapsed", 0))
+            total_elapsed_2 += float(d.get("elapsed_2", 0))
+
+            # 3. Sum the reasoning tokens for this log entry.
+            total_reasoning_tokens += int(d.get("completion_tokens_details", {}).get("reasoning_tokens", 0))
+
+    # 3c. Store the totals for this subdirectory in the results dict.
+    results_dict["resources"] = {
+        "elapsed_1": total_elapsed,
+        "elapsed_2": total_elapsed_2,
+        "total_time": total_elapsed + total_elapsed_2,
+        "total_reasoning_tokens": total_reasoning_tokens,
+    }
 
     # Report stats
     if bool_output_to_terminal:
@@ -306,25 +337,29 @@ def output_results(
         axis=1
     )
 
+    cols = [
+                "Feature_ID", 
+                "gold", 
+                "model_output", 
+                "verdict", 
+                "confidence", 
+                "justification", 
+                "quote", 
+                "pages", 
+        ]
+    cols2 = ['human_comment', 'human_source', 'human_source_comment', 'human_coders']
+    cols3 = [
+                "Main_domain", 
+                "Finer_grouping",
+            ]
+
+    # There may not be cols2, so only include them if they exist in the DataFrame
+    cols2_existing = [col for col in cols2 if col in df_feature_grouping.columns]
+
     # Reorder columns:
     # Feature_ID, gold, model_output, verdict, confidence, justification, quote, pages, Main_domain, Finer_grouping
     df_feature_grouping = df_feature_grouping[
-        [
-            "Feature_ID", 
-            "gold", 
-            "model_output", 
-            "verdict", 
-            "confidence", 
-            "justification", 
-            "quote", 
-            "pages", 
-            "human_comment", 
-            "human_source", 
-            "human_source_comment", 
-            "human_coders",
-            "Main_domain", 
-            "Finer_grouping",
-        ]
+        cols + cols2_existing + cols3
     ]
 
     # Sort by: 
