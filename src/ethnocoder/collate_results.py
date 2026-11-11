@@ -23,7 +23,7 @@ def collate_results(main_directory: str, target_directory: str) -> None:
                 target_path = os.path.join(target_directory, new_file_name)
                 shutil.move(source_path, target_path)
                 n_moved += 1
-    print(f"[green]Moved {n_moved} files to {target_directory}[/green]")
+    print(f"[green]Moved {n_moved} files to [spring_green2]{target_directory}[/spring_green2][/green]")
 
 if __name__ == "__main__":
 

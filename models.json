@@ -10,5 +10,8 @@
     },
     "openai/mistral-large-4-1t-a52b": {
         "context_window": 1048576
+    },
+    "openai/qwen3.6-35b-a3b": {
+        "context_window": 262144
     }
 }

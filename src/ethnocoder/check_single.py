@@ -405,14 +405,14 @@ def output_results(
     df_feature_grouping.to_csv(fpath_output, sep="\t", index=False)
 
     # Inform the user.
-    print(f"  [green]TSV written for gold and model output at {fpath_output.name}[/green]")
+    print(f"  [green]TSV written for gold and model output at [spring_green2]{fpath_output.name}[/spring_green2][/green]")
 
     # If there are any correct, output them to a separate TSV file.
     df_correct = df_feature_grouping[df_feature_grouping["verdict"] == "correct"]
     if not df_correct.empty:
         fpath_correct = out_dir / "results_correct.tsv"
         df_correct.to_csv(fpath_correct, sep="\t", index=False)
-        print(f"  [green]→ TSV written for correct entries at {fpath_correct.name}[/green]")
+        print(f"  [green]→ TSV written for correct entries at [spring_green2]{fpath_correct.name}[/spring_green2][/green]")
     else:
         print(f"  [yellow]→ No correct entries found.[/yellow]")
 
@@ -421,7 +421,7 @@ def output_results(
     if not df_incorrect.empty:
         fpath_incorrect = out_dir / "results_incorrect.tsv"
         df_incorrect.to_csv(fpath_incorrect, sep="\t", index=False)
-        print(f"  [green]→ TSV written for incorrect entries at {fpath_incorrect.name}[/green]")
+        print(f"  [green]→ TSV written for incorrect entries at [spring_green2]{fpath_incorrect.name}[/spring_green2][/green]")
     else:
         print(f"  [yellow]→ No incorrect entries found.[/yellow]")
 
@@ -430,7 +430,7 @@ def output_results(
     if not df_hedged.empty:
         fpath_hedged = out_dir / "results_hedged.tsv"
         df_hedged.to_csv(fpath_hedged, sep="\t", index=False)
-        print(f"  [green]→ TSV written for hedged entries at {fpath_hedged.name}[/green]")
+        print(f"  [green]→ TSV written for hedged entries at [spring_green2]{fpath_hedged.name}[/spring_green2][/green]")
     else:
         print(f"  [yellow]→ No hedged entries found.[/yellow]")
 

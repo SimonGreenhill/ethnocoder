@@ -38,4 +38,4 @@ def _run(args) -> None:
         sources = [s.strip() for s in args.sources.split(",")]
     n = cldf.write_gold(ds, workingdir, sources=sources)
 
-    print(f"[green]Wrote {n} gold file(s) to {workingdir / 'gold'}[/green]")
+    print(f"[green]Wrote {n} gold file(s) to [spring_green2]{workingdir / 'gold'}[/spring_green2][/green]")

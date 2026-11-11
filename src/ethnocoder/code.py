@@ -88,7 +88,7 @@ class Coder():
         # Count the number of option-type variables for reporting
         option_count = sum(1 for v in variables if v.get("Datatype", "Option") == "Option")
         print(
-            f"[blue]Loaded {len(variables)} variables ({option_count} option-type) from {self.args.variables}[/blue]",
+            f"[blue]Loaded {len(variables)} variables ({option_count} option-type) from [bright_cyan]{self.args.variables}[/bright_cyan][/blue]",
             file=sys.stderr,
         )
     
@@ -1102,7 +1102,7 @@ class Coder():
                     encoding="utf-8"
                 )
 
-                print(f"    [green]DEBUG BATCHES: output file {batch_debug_path}[/green]")
+                print(f"    [green]DEBUG BATCHES: output file [spring_green2]{batch_debug_path}[/spring_green2][/green]")
 
                 # Continue: when debugging batches, we do not code the batch, just output debug info.
                 continue
@@ -1149,7 +1149,7 @@ class Coder():
                 review_path.write_text(review_msg, encoding="utf-8")
 
             # Inform the user
-            print(f"  [green]JSON saved → {json_path}[/green]", file=sys.stderr)
+            print(f"  [green]JSON saved → [spring_green2]{json_path}[/spring_green2][/green]", file=sys.stderr)
 
             # Figure out from meta how long it took.
             # If less than 5s and api_base begins "openai/", pause for 5s because we're allowed 2 requests per 10 seconds.
@@ -1299,7 +1299,7 @@ class Coder():
             sys.exit(1)
 
         # Inform the user
-        print(f"[blue]Extracting text from {doc_path.name} ({doc_path.stat().st_size / 1e6:.1f} MB)…[/blue]", file=sys.stderr)
+        print(f"[blue]Extracting text from [bright_cyan]{doc_path.name}[/bright_cyan] ({doc_path.stat().st_size / 1e6:.1f} MB)…[/blue]", file=sys.stderr)
 
         # Get document text
         if self.bool_is_pdf:
@@ -1326,13 +1326,13 @@ class Coder():
             out_dir = Path(out_dir)
 
         # Inform the user about the output directory
-        print(f"[blue]Preparing output directory {out_dir}…[/blue]", file=sys.stderr)
+        print(f"[blue]Preparing output directory [bright_cyan]{out_dir}[/bright_cyan]…[/blue]", file=sys.stderr)
         
         # Create the output directory if it doesn't exist
         out_dir.mkdir(exist_ok=True, parents=True)
 
         # Inform the user and code the document
-        infotext = f"[blue]Coding [magenta]{doc_path.name}[/magenta] ({len(variables)} variables) with [green bold]{model}[/green bold]"
+        infotext = f"[blue]Coding [bright_cyan]{doc_path.name}[/bright_cyan] ({len(variables)} variables) with [grey54 bold]{model}[/grey54 bold]"
         if bool_review:
             infotext += " and[/blue] [magenta]review pass[/magenta] [blue]enabled"
         print(f"{infotext}...[/blue]", file=sys.stderr)

@@ -78,7 +78,7 @@ def summarise_tsv_results(
     # Output the summary to a TSV file and print it to the console
     summary_file = os.path.join(directory, f"summary_results_{get_timestamp()}.tsv")
     summary.to_csv(summary_file, sep="\t", index=False)
-    print(f"[green]Summary written to {summary_file}[/green]")
+    print(f"[green]Summary written to [spring_green2]{summary_file}[/spring_green2][/green]")
 
     # Output summary if requested
     if bool_output_to_terminal:
@@ -220,7 +220,7 @@ def plot_accuracy_per_stats(
     os.makedirs(summary_dir, exist_ok=True)
     output_path = os.path.join(summary_dir, f"accuracy_time_reasoning_{get_timestamp()}.png")
     plt.savefig(output_path)
-    print(f"[green]Saved plot to {output_path}[/green]")
+    print(f"[green]Saved plot to [spring_green2]{output_path}[/spring_green2][/green]")
 
 
 if __name__ == "__main__":

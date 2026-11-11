@@ -148,18 +148,18 @@ def check_model_demand(
             demand = m.get("demand", None)
 
             if demand is None:
-                print(f"  [yellow]Demand information for model {model} is not available[/yellow]")
+                print(f"  [yellow]Demand information for model [bold][grey54]{model}[/grey54][/bold] is not available[/yellow]")
                 return
 
             if demand > 0:
-                print(f"  [yellow]Demand for model {model} is {m['demand']}[/yellow]")
+                print(f"  [yellow]Demand for model [bold][grey54]{model}[/grey54][/bold] is {m['demand']}[/yellow]")
                 return
 
             else:
-                print(f"  [green]No demand for model [bold]{model}[/bold][/green]")
+                print(f"  [deep_pink4]No demand for model [bold][grey54]{model}[/grey54][/bold][/deep_pink4]")
                 return
 
-    print(f"  [red]Model {model} not found in API response.[/red]")
+    print(f"  [red]Model [grey54 bold]{model}[/grey54 bold] not found in API response.[/red]")
 
 def llm_stream(
     messages: list[dict],
@@ -239,7 +239,7 @@ def llm_stream(
     )
 
     if prompt_tokens:
-        print(f"  [blue]Estimated prompt tokens: {prompt_tokens:,}[/blue]")
+        print(f"  [deep_pink4]Estimated prompt tokens: {prompt_tokens:,}[/deep_pink4]")
 
     # Send the messages to the LLM and stream the response.
     # If it's a remote call (i.e. openai/), each attempt will have a timeout.
@@ -365,7 +365,7 @@ def llm_stream(
     for period, remaining in remaining_requests.items():
         if remaining is not None:
             print(
-                f"    [magenta]Remaining requests for {period:<5}: {remaining:>4}[/magenta]"
+                f"    [deep_pink4]Remaining requests for {period:<5}: {remaining:>4}[/deep_pink4]"
             )
 
     # Combine the collected chunks into the final response text.
@@ -398,6 +398,6 @@ def llm_stream(
             del meta['prompt_tokens_details']
 
         # Inform the user.
-        print(f"  [green]Actual prompt tokens: {usage.prompt_tokens:,}, Completion tokens: {usage.completion_tokens:,}, Total tokens: {usage.total_tokens:,}[/green]")
+        print(f"  [deep_pink4]Actual prompt tokens: {usage.prompt_tokens:,}, Completion tokens: {usage.completion_tokens:,}, Total tokens: {usage.total_tokens:,}[/deep_pink4]")
 
     return final_text, meta
