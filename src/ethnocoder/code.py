@@ -6,6 +6,7 @@ import csv
 import json
 import os
 import sys
+import re
 import time
 from pathlib import Path
 from typing import cast
@@ -214,17 +215,57 @@ class Coder():
             str: The extracted text from the PDF.
         """
 
+        def clean_block(text: str) -> str:
+            """
+            Clean a text block during PDF extraction.
+            """
+
+            # Remove soft hyphens.
+            text = text.replace("\u00ad", "")
+
+            # Join words explicitly hyphenated across lines.
+            text = re.sub(r"(?<=\w)-[ \t]*\n[ \t]*(?=\w)", "", text)
+
+            # Remaining newlines inside a block are usually visual wrapping.
+            text = re.sub(r"[ \t]*\n[ \t]*", " ", text)
+
+            # Collapse repeated horizontal whitespace.
+            return re.sub(r"[ \t]+", " ", text).strip()
+
+        # Initialise pages.
+        pages: list[str] = []
+
+        # Initialise flags.
+        flags = pymupdf.TEXTFLAGS_BLOCKS | pymupdf.TEXT_DEHYPHENATE
+
         # Open the PDF file using pymupdf
-        doc = pymupdf.open(str(pdf_path))
+        with pymupdf.open(pdf_path) as doc:
+            for page_number, page in enumerate(doc, 1):
+                blocks = page.get_text(
+                    "blocks",
+                    sort=True, # puts blocks in reading order
+                    flags=flags, # joins words split by hyphens across lines
+                )
 
-        # Get page texts as a list (one element per page)
-        pages = [f"[page {i}]\n{cast(str, page.get_text())}" for i, page in enumerate(doc, 1)]  # type: ignore[arg-type]
+                # A block tuple is:
+                # (x0, y0, x1, y1, text, block_number, block_type)
+                # block_type == 0 means text.
+                paragraphs = [
+                    cleaned
+                    for block in blocks
+                    if block[6] == 0
+                    if (cleaned := clean_block(block[4]))
+                ]
 
-        # Close the PDF document
-        doc.close()
+                # Build the page text by joining paragraphs with double newlines.
+                page_text = "\n\n".join(paragraphs)
 
-        # Combine the page texts into a single string
-        text = "\n\n".join(pages)
+                # Set page marker for the current page.
+                page_text = f"[p.{page_number}]\n{page_text}"
+
+                pages.append(page_text)
+
+        text = "\n\n".join(filter(None, pages))
 
         # If max_chars is specified and the text exceeds that length, truncate it and print a warning.
         if max_chars and len(text) > max_chars:
@@ -257,13 +298,19 @@ class Coder():
 
         return text
 
-    def build_coding_prompt(self, variables: list[dict], codes_by_var: dict[str, list]) -> str:
+    def build_coding_prompt(
+            self, 
+            variables: list[dict], 
+            codes_by_var: dict[str, list],
+            document_text_full: str,
+        ) -> str:
         """
         Build a prompt for coding variables based on their definitions and available codes.
 
         Args:
             variables (list[dict]): A list of variable dictionaries.
             codes_by_var (dict[str, list]): A dictionary mapping variable IDs to lists of code dictionaries.
+            document_text_full (str): The full text of the document to be coded.
 
         Returns:
             str: The constructed coding prompt.
@@ -272,9 +319,17 @@ class Coder():
         # Initialize the list of lines that will make up the prompt
         lines: list[str] = [
             f"You are coding for the language: {self.language_name}.\n\n",
-            "Code each variable below based on the source document above.",
-            "For each, assign the most appropriate code and briefly justify your choice.\n",
         ]
+        lines.append("--- SOURCE DOCUMENT ---")
+        lines.append(document_text_full)
+        lines.append("") # Newline after document text.
+
+        lines.append(
+            "Code each variable below based on the source document above.",
+        )
+        lines.append(
+            "For each, assign the most appropriate code and briefly justify your choice.\n",
+        )
 
         # Start by simply listing the variables.
         lines.append("Code ONLY the following variables: " + ", ".join(var["ID"] for var in variables) +".\n")
@@ -815,7 +870,11 @@ class Coder():
 
         # Create the coding prompt for the current batch of variables.
         # This is the user prompt.
-        coding_prompt = self.build_coding_prompt(variables, codes_by_var)
+        coding_prompt = self.build_coding_prompt(
+            variables = variables, 
+            codes_by_var = codes_by_var,
+            document_text_full = document_text_full,
+        )
         user_content = coding_prompt
         # user_content = f"{document_text_full}\n\n---\n\n{coding_prompt}" if document_text_full else coding_prompt
 
@@ -1253,8 +1312,9 @@ class Coder():
         # document_text_full = f"Source document: {doc_path.stem}\n\n{doc_text}"
         messages = [{"role": "system", "content": self.load_prompt(PROMPT_FILE)}]
 
-        # The system message includes the full document content at the end
-        messages[0]["content"] += f"\n\n{document_text_full}"
+        # Full document content goes in the user prompt.
+        # # The system message includes the full document content at the end
+        # messages[0]["content"] += f"\n\n{document_text_full}"
 
         # Prepare output directory for coded results
         if out_dir is None:

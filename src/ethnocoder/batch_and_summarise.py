@@ -24,7 +24,7 @@ from ethnocoder.utils import get_timestamp, GRAMBANK_CLDF_DIR
 from ethnocoder.code import Coder
 from ethnocoder.check_single import main as check_single_main
 from ethnocoder.collate_results import collate_results
-from ethnocoder.get_results_stats import main as get_results_stats_main
+from ethnocoder.get_results_stats import summarise_tsv_results, plot_accuracy_per_stats
 
 DIR_OUT = "output"
 
@@ -298,9 +298,14 @@ def summarise_results(output_batch_directory, retlist, args):
     )
 
     # Finally, create the full summary TSV using get_results_stats_main
-    get_results_stats_main(
+    summarise_tsv_results(
         directory = summary_output_directory,
         bool_output_to_terminal = False,
+    )
+
+    # Optionally, plot accuracy per stats if needed
+    plot_accuracy_per_stats(
+        directory = summary_output_directory,
     )
 
 
