@@ -15,6 +15,7 @@ import sys
 from rich import print
 import pandas as pd
 
+from ethnocoder.cldf import GRAMBANK_MULTISTATE_MAPPINGS
 from ethnocoder.utils import GRAMBANK_CLDF_DIR
 
 def main(
@@ -256,50 +257,20 @@ def output_results(
     # Load everything from feature_grouping_for_analysis.csv.
     df_feature_grouping = pd.read_csv("feature_grouping_for_analysis.csv")
 
-    # Any Feature_ID values that end in an alphabetic character should be merged:
-    # Assert that the same Feature_ID that ends with an a and a b have the same values for all other columns,
-    # then remove the "b" row and rename the Feature_ID of the "a" row to the base ID (without the alphabetic suffix).
+    # Convert feature grouping dataframe columns to strings.
     for col in df_feature_grouping.columns:
         if col == "Feature_ID":
             continue
         df_feature_grouping[col] = df_feature_grouping[col].astype(str)
 
-    # def merge_feature_ids(df):
-
-    #     # Get the base IDs by extracting the non-numeric prefix from Feature_ID
-    #     base_ids = df["Feature_ID"].str.replace(r"[A-Za-z]+$", "", regex=True)
-
-    #     # For each unique base ID, check if there are multiple rows with the same base ID and merge them if necessary.
-    #     for base_id in base_ids.unique():
-
-    #         # Get the subset of rows that start with the current base ID
-    #         subset = df[df["Feature_ID"].str.startswith(base_id)]
-
-    #         # If there is more than one row with the same base ID, ensure all other columns have the same values and merge them.
-    #         if subset.shape[0] > 1:
-
-    #             # Check that all rows with the same base ID have identical values for all columns except Feature_ID
-    #             for col in df.columns:
-    #                 if col == "Feature_ID":
-    #                     continue
-    #                 assert subset[col].nunique() == 1, f"Mismatch in column {col} for base ID {base_id}"
-
-    #             # Merge the rows by keeping the first one and dropping the rest
-    #             df = df.drop(subset.index[1:])
-
-    #             # Update the Feature_ID of the remaining row to the base ID
-    #             df.loc[subset.index[0], "Feature_ID"] = base_id
-    #     return df
-
-    # # Apply the merging function to the feature grouping DataFrame.
-    # # MANUALLY check they have the right Main_domain and Finer_grouping.
-    # # (Output to TSV, upload to Google Docs, sort by Feature_ID, copy into existing sheet)
-    # df_feature_grouping = merge_feature_ids(df_feature_grouping)
-
     # Check all the variables are in df_feature_grouping.
     # Load the parameters csv from GRAMBANK_CLDF_DIR.
     fpath_parameters = GRAMBANK_CLDF_DIR / "parameters.csv"
     df_parameters = pd.read_csv(fpath_parameters)
+
+    # Remove multistate variables from df_parameters and df_feature_grouping.
+    df_parameters = df_parameters[~df_parameters["ID"].isin(GRAMBANK_MULTISTATE_MAPPINGS)]
+    df_feature_grouping = df_feature_grouping[~df_feature_grouping["Feature_ID"].isin(GRAMBANK_MULTISTATE_MAPPINGS)]
 
     # Check that all entries in the ID column of df_parameters are present in df_feature_grouping.
     if not df_parameters["ID"].isin(df_feature_grouping["Feature_ID"]).all():
@@ -342,6 +313,18 @@ def output_results(
         axis=1
     )
 
+    # If the gold value is None or pd.nan, change the verdict to "missing_gold"
+    df_feature_grouping["verdict"] = df_feature_grouping.apply(
+        lambda row: "missing_gold" if row["gold"] is None or pd.isna(row["gold"]) else row["verdict"],
+        axis=1
+    )
+
+    # If the model_output value is None, change the verdict to "missing_model"
+    df_feature_grouping["verdict"] = df_feature_grouping.apply(
+        lambda row: "missing_model" if row["model_output"] is None or pd.isna(row["model_output"]) else row["verdict"],
+        axis=1
+    )
+
     cols = [
                 "Feature_ID", 
                 "gold", 
@@ -375,7 +358,7 @@ def output_results(
     # 5. Feature_ID
     df_feature_grouping["verdict"] = pd.Categorical(
         df_feature_grouping["verdict"],
-        categories=["correct", "incorrect", "hedged"],
+        categories=["correct", "incorrect", "hedged", "missing_gold", "missing_model"],
         ordered=True
     )
     df_feature_grouping["confidence"] = pd.Categorical(
@@ -433,6 +416,24 @@ def output_results(
         print(f"  [green]→ TSV written for hedged entries at [spring_green2]{fpath_hedged.name}[/spring_green2][/green]")
     else:
         print(f"  [yellow]→ No hedged entries found.[/yellow]")
+
+    # If there are any missing gold entries, output them to a separate TSV file.
+    df_missing_gold = df_feature_grouping[df_feature_grouping["verdict"] == "missing_gold"]
+    if not df_missing_gold.empty:
+        fpath_missing_gold = out_dir / "results_missing_gold.tsv"
+        df_missing_gold.to_csv(fpath_missing_gold, sep="\t", index=False)
+        print(f"  [green]→ TSV written for missing gold entries at [spring_green2]{fpath_missing_gold.name}[/spring_green2][/green]")
+    else:
+        print(f"  [yellow]→ No missing gold entries found.[/yellow]")
+
+    # If there are any missing model entries, output them to a separate TSV file.
+    df_missing_model = df_feature_grouping[df_feature_grouping["verdict"] == "missing_model"]
+    if not df_missing_model.empty:
+        fpath_missing_model = out_dir / "results_missing_model.tsv"
+        df_missing_model.to_csv(fpath_missing_model, sep="\t", index=False)
+        print(f"  [green]→ TSV written for missing model entries at [spring_green2]{fpath_missing_model.name}[/spring_green2][/green]")
+    else:
+        print(f"  [yellow]→ No missing model entries found.[/yellow]")
 
 if __name__ == "__main__":
 
