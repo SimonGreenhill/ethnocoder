@@ -18,7 +18,11 @@ logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 from rich import print
 
 from ethnocoder.models import llm_stream, get_max_context
-from ethnocoder.utils import parse_codings, get_timestamp, CONTEXT_BUDGET_DEFAULT
+from ethnocoder.utils import (
+    parse_codings, get_timestamp, 
+    load_variables, load_codes,
+    CONTEXT_BUDGET_DEFAULT,
+)
 
 # Globals
 PROMPT_FILE = Path('.') / "PROMPT.md"
@@ -71,8 +75,8 @@ class Coder():
             sys.exit(1)
     
         # Get variables and codes from the provided paths
-        all_variables = self.load_variables(Path(self.args.variables))
-        codes_by_var = self.load_codes(Path(self.args.codes))
+        all_variables = load_variables(Path(self.args.variables))
+        codes_by_var = load_codes(Path(self.args.codes))
     
         # Subset the variables if necessary
         variables = all_variables
@@ -88,7 +92,7 @@ class Coder():
         # Count the number of option-type variables for reporting
         option_count = sum(1 for v in variables if v.get("Datatype", "Option") == "Option")
         print(
-            f"[blue]Loaded {len(variables)} variables ({option_count} option-type) from [bright_cyan]{self.args.variables}[/bright_cyan][/blue]",
+            f"  [green]Loaded {len(variables)} variables ({option_count} option-type) from [bright_cyan]{self.args.variables}[/bright_cyan][/green]",
             file=sys.stderr,
         )
     
@@ -151,57 +155,6 @@ class Coder():
         """
         with open(path, encoding="utf-8") as f:
             return f.read()
-
-    def load_variables(self, path: Path) -> list[dict]:
-        """
-        Load variables data from a CSV file.
-
-        Args:
-            path (Path): The path to the CSV file containing variables data.
-
-        Returns:
-            list[dict]: A list of dictionaries representing the variables.
-        """
-
-        with open(path, encoding="utf-8") as f:
-            return list(csv.DictReader(f))
-
-    def load_codes(
-            self,
-            path: Path,
-            bool_use_question_mark: bool = True,
-        ) -> dict[str, list[dict]]:
-        """
-        Load codes data from a CSV file and organize them by variable ID.
-
-        Args:
-            path (Path): The path to the CSV file containing codes data.
-            bool_use_question_mark (bool): Whether to include the "?" code as valid, to mean "no evidence found". Defaults to True.
-
-        Returns:
-            dict[str, list[dict]]: A dictionary mapping variable IDs to lists of code dictionaries.
-        """
-
-        # Initialise the dictionary to store codes by variable ID
-        codes_by_var: dict[str, list[dict]] = {}
-
-        # Open the CSV file and read its contents
-        with open(path, encoding="utf-8") as f:
-
-            # Iterate over each row in the CSV and organize codes by variable ID
-            for row in csv.DictReader(f):
-
-                # If row["Parameter_ID"] is not already a key in the dictionary, add it with an empty list
-                # and then append the current row.
-                codes_by_var.setdefault(row["Parameter_ID"], []).append(row)
-
-        # If bool_use_question_mark is True, add the "?" code to each variable's list of codes if it's not already present.
-        if bool_use_question_mark:
-            for var_id, codes in codes_by_var.items():
-                if not any(code["Name"] == "?" for code in codes):
-                    codes.append({"ID": f"{var_id}-?", "Parameter_ID": var_id, "Name": "?", "Description": "No evidence found"})
-
-        return codes_by_var
 
     def extract_pdf_text(self, pdf_path: Path, max_chars: int | None = None) -> str:
         """

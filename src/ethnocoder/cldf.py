@@ -2,6 +2,7 @@ import json
 import re
 import shutil
 import sys
+import copy
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
@@ -14,6 +15,57 @@ import pycldf
 TABLE_FILES = {
     "parameters": ("ParameterTable", "parameters.csv"),
     "codes": ("CodeTable", "codes.csv"),
+}
+
+# Formerly multistate variables must be binarised when writing gold files.
+# This object denotes how multistate variables ought to be converted to binary variables.
+# Of course, if the binary variables already exist for the specified source and language,
+# they take precedence over the corresponding multistate variable.
+GRAMBANK_MULTISTATE_MAPPINGS = {
+    "GB024": { # GB024: What is the order of numeral and noun in the NP? 1=Num-N, 2=N-Num, 3=both
+        "binaries": ["GB024a", "GB024b"],
+        "1": {"GB024a": "1", "GB024b": "0"}, # GB024a: Is the order of the numeral and noun Num-N?
+        "2": {"GB024a": "0", "GB024b": "1"}, # GB024b: Is the order of the numeral and noun N-Num?
+        "3": {"GB024a": "1", "GB024b": "1"}, # both
+        "?": {"GB024a": "?", "GB024b": "?"}, # unknown
+    },
+    "GB025": { # GB025: What is the order of adnominal demonstrative and noun? 1=Dem-N, 2=N-Dem, 3=both
+        "binaries": ["GB025a", "GB025b"],
+        "1": {"GB025a": "1", "GB025b": "0"}, # GB025a: Is the order of adnominal demonstrative and noun Dem-N?
+        "2": {"GB025a": "0", "GB025b": "1"}, # GB025b: Is the order of adnominal demonstrative and noun N-Dem?
+        "3": {"GB025a": "1", "GB025b": "1"}, # both
+        "?": {"GB025a": "?", "GB025b": "?"}, # unknown
+    },
+    "GB065": { # GB065: What is the pragmatically unmarked order of adnominal possessor noun and possessed noun? 1=Possessor-Possessed, 2=Possessed-Possessor, 3=both
+        "binaries": ["GB065a", "GB065b"],
+        "1": {"GB065a": "1", "GB065b": "0"}, # GB065a: Is the pragmatically unmarked order of adnominal possessor noun and possessed noun PSR-PSD?
+        "2": {"GB065a": "0", "GB065b": "1"}, # GB065b: Is the pragmatically unmarked order of adnominal possessor noun and possessed noun PSD-PSR?
+        "3": {"GB065a": "1", "GB065b": "1"}, # both
+        "?": {"GB065a": "?", "GB065b": "?"}, # unknown
+    }, 
+    "GB130": { # GB130: What is the pragmatically unmarked order of S and V in intransitive clauses? 1=SV, 2=VS, 3=both
+        "binaries": ["GB130a", "GB130b"],
+        "1": {"GB130a": "1", "GB130b": "0"}, # GB130a: Is the pragmatically unmarked order of S and V in intransitive clauses S-V?
+        "2": {"GB130a": "0", "GB130b": "1"}, # GB130b: Is the pragmatically unmarked order of S and V in intransitive clauses V-S?
+        "3": {"GB130a": "1", "GB130b": "1"}, # both
+        "?": {"GB130a": "?", "GB130b": "?"}, # unknown
+    },
+    "GB193": { # GB193: What is the order of adnominal property word and noun?: 1=ANM-N, 2=N-ANM, 3=both, 0=they cannot be used attributively
+        "binaries": ["GB193a", "GB193b"],
+        "0": {"GB193a": "0", "GB193b": "0"}, # They cannot be used attributively
+        "1": {"GB193a": "1", "GB193b": "0"}, # GB193a: Is the order of the adnominal property word (ANM) and noun ANM-N?
+        "2": {"GB193a": "0", "GB193b": "1"}, # GB193b: Is the order of the adnominal property word (ANM) and noun N-ANM?
+        "3": {"GB193a": "1", "GB193b": "1"}, # both
+        "?": {"GB193a": "?", "GB193b": "?"}, # unknown
+    },
+    "GB203": { # GB203: What is the order of the adnominal collective universal quantifier ('all') and the noun?: 1=UQ-N, 2=N-UQ, 3=both, 0=no UQ,
+        "binaries": ["GB203a", "GB203b"],
+        "0": {"GB203a": "0", "GB203b": "0"}, # No UQ
+        "1": {"GB203a": "1", "GB203b": "0"}, # GB203a: Is the order of the adnominal collective universal quantifier (UQ) and noun UQ-N?
+        "2": {"GB203a": "0", "GB203b": "1"}, # GB203b: Is the order of the adnominal collective universal quantifier (UQ) and noun N-UQ?
+        "3": {"GB203a": "1", "GB203b": "1"}, # both
+        "?": {"GB203a": "?", "GB203b": "?"}, # unknown
+    },
 }
 
 
@@ -110,6 +162,45 @@ def codings_for_source(
         if by_param[param_id][4] is not None:
             by_param[param_id][4] = "; ".join(by_param[param_id][4])
 
+    # Convert multistate variables to their corresponding binary variables,
+    # if the binary variables don't already exist.
+    # Then remove the multistate variables.
+    for multistate_id in GRAMBANK_MULTISTATE_MAPPINGS.keys():
+
+        # Figure out if the corresponding binary variables exist for this multistate variable.
+        binaries = GRAMBANK_MULTISTATE_MAPPINGS[multistate_id]["binaries"] # we want it to error if it doesn't exist
+        for binary_id in binaries:
+            if binary_id not in by_param and multistate_id in by_param:
+
+                # We need to add this binary variable.
+                # Get the value from the multistate.
+                # We want it to error if it doesn't exist.
+                ls_multistate = copy.deepcopy(by_param[multistate_id])
+                value_binary = GRAMBANK_MULTISTATE_MAPPINGS[multistate_id][str(ls_multistate[0])][binary_id]
+
+                # Convert None's to empty strings for concatenation purposes.
+                if ls_multistate[1] is None:
+                    ls_multistate[1] = "[BINARISED FROM MULTISTATE]"
+                else:
+                    ls_multistate[1] += " [BINARISED FROM MULTISTATE]"
+                if ls_multistate[4] is None:
+                    ls_multistate[4] = "[BINARISED FROM MULTISTATE]"
+                else:
+                    ls_multistate[4] += " [BINARISED FROM MULTISTATE]"
+
+                # Take the binary value, and fill in the other fields from the multistate value.
+                by_param[binary_id] = [
+                    value_binary, # code
+                    ls_multistate[1], # comment
+                    ls_multistate[2], # source
+                    ls_multistate[3], # source_comment
+                    ls_multistate[4], # coders
+                ]
+
+        # Remove any entries in by_param where "ID" is equal to one of the keys of GRAMBANK_MULTISTATE_MAPPINGS.
+        if multistate_id in by_param:
+            del by_param[multistate_id]
+
     # Build the return list of dicts.
     retlist = [
         {
@@ -156,7 +247,7 @@ def write_gold(ds: pycldf.Dataset, out_dir: Path, sources: list[str] | None = No
     code_names = {row["ID"]: row["Name"] for row in cast(Iterable[dict], ds["CodeTable"])}
 
     # Inform the user we are building the source index, because it can take a little while
-    print("[blue]Building source index...[/blue]")
+    print("[blue]Building source index (this can take a while)...[/blue]")
     source_index = build_source_index(cast(Iterable[dict], ds["ValueTable"]))
 
     # Set up the output directory
@@ -186,8 +277,11 @@ def write_gold(ds: pycldf.Dataset, out_dir: Path, sources: list[str] | None = No
         # Write this gold file
         out_path.write_text(json.dumps(codings, indent=2), encoding="utf-8")
 
+        # Total variables is all those in all_variables, minus the IDs in the keys of GRAMBANK_MULTISTATE_MAPPINGS.
+        total_variables = len([v for v in all_variables if v["ID"] not in GRAMBANK_MULTISTATE_MAPPINGS])
+
         # Print a summary of what was written for this source.
-        print(f"  [blue]{key:40s}  {len(codings):3d}/{len(all_variables)} coded → {out_path}[/blue]")
+        print(f"  [blue]{key:40s}  [green]{len(codings):3d}/{total_variables} coded → [spring_green2]{out_path}[/spring_green2][/green][/blue]")
 
         # Increment the count of written files.
         n_written += 1

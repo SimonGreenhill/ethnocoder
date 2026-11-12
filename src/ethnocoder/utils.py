@@ -5,6 +5,7 @@ import os
 from rich import print
 from pathlib import Path
 import pandas as pd
+import csv
 
 OLLAMA_URL = "http://127.0.0.1:11434"
 GRAMBANK_CLDF_DIR = Path(os.path.join("dataset", "grambank-v3.0rc1", "cldf"))
@@ -109,3 +110,73 @@ def convert_model_output_to_tsv(
 
     # Report success
     print(f"[green]Successfully converted model output to TSV: {fpath_output_tsv}[/green]")
+
+
+def load_variables(path: Path) -> list[dict]:
+    """
+    Load variables data from a CSV file.
+
+    Args:
+        path (Path): The path to the CSV file containing variables data.
+
+    Returns:
+        list[dict]: A list of dictionaries representing the variables.
+    """
+
+    print(f"[blue]Loading variables from [bright_cyan]{path}[/bright_cyan][/blue]")
+
+    # Open the CSV file and read its contents into a list of dictionaries.
+    with open(path, encoding="utf-8") as f:
+        ls_variables = list(csv.DictReader(f))
+
+    # Process: if there are binarised variables, remove the corresponding multistate variable.
+    # Binarised variables are those whose value for "ID" ends with a lower-case alphabetic character, NOT a number.
+    binarised_ids = {var["ID"] for var in ls_variables if var["ID"][-1].isalpha() and var["ID"][-1].islower()}
+
+    # Specify the variables to omit: first remove the final character from each binarised ID to get the corresponding multistate ID
+    multistate_ids_to_omit = {var_id[:-1] for var_id in binarised_ids}
+
+    # Filter out the multistate variables that have corresponding binarised versions
+    ls_variables = [var for var in ls_variables if var["ID"] not in multistate_ids_to_omit]
+
+    # Inform the user
+    print(f"  [yellow]Removed multistate variables with corresponding binarised versions: {', '.join(multistate_ids_to_omit)}[/yellow]")
+
+    # Return processed variables
+    return ls_variables
+
+def load_codes(
+        path: Path,
+        bool_use_question_mark: bool = True,
+    ) -> dict[str, list[dict]]:
+    """
+    Load codes data from a CSV file and organize them by variable ID.
+
+    Args:
+        path (Path): The path to the CSV file containing codes data.
+        bool_use_question_mark (bool): Whether to include the "?" code as valid, to mean "no evidence found". Defaults to True.
+
+    Returns:
+        dict[str, list[dict]]: A dictionary mapping variable IDs to lists of code dictionaries.
+    """
+
+    # Initialise the dictionary to store codes by variable ID
+    codes_by_var: dict[str, list[dict]] = {}
+
+    # Open the CSV file and read its contents
+    with open(path, encoding="utf-8") as f:
+
+        # Iterate over each row in the CSV and organize codes by variable ID
+        for row in csv.DictReader(f):
+
+            # If row["Parameter_ID"] is not already a key in the dictionary, add it with an empty list
+            # and then append the current row.
+            codes_by_var.setdefault(row["Parameter_ID"], []).append(row)
+
+    # If bool_use_question_mark is True, add the "?" code to each variable's list of codes if it's not already present.
+    if bool_use_question_mark:
+        for var_id, codes in codes_by_var.items():
+            if not any(code["Name"] == "?" for code in codes):
+                codes.append({"ID": f"{var_id}-?", "Parameter_ID": var_id, "Name": "?", "Description": "No evidence found"})
+
+    return codes_by_var
