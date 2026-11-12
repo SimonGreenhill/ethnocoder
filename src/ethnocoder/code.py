@@ -2,6 +2,7 @@
 # _run -> code_document_outer -> code_document_inner -> code_batch -> llm_stream().
 
 import argparse
+import copy
 import csv
 import json
 import os
@@ -56,6 +57,10 @@ class Coder():
 
         # Set language name
         self.language_name = args.language
+
+        # If args contains lgcode, set it as an attribute.
+        if hasattr(args, "lgcode"):
+            self.lgcode = args.lgcode
 
     def run(self):
         """
@@ -251,43 +256,25 @@ class Coder():
 
         return text
 
-    def build_coding_prompt(
-            self, 
+    def build_variables_description_section(
+            self,
+            lines: list[str], 
             variables: list[dict], 
             codes_by_var: dict[str, list],
-            document_text_full: str,
-        ) -> str:
+        ) -> list[str]:
         """
-        Build a prompt for coding variables based on their definitions and available codes.
+        Build the variables description section for the coding prompt.
 
         Args:
+            lines (list[str]): The current list of lines for the prompt.
             variables (list[dict]): A list of variable dictionaries.
             codes_by_var (dict[str, list]): A dictionary mapping variable IDs to lists of code dictionaries.
-            document_text_full (str): The full text of the document to be coded.
 
         Returns:
-            str: The constructed coding prompt.
+            list[str]: The updated list of lines with the variables description section added.
         """
 
-        # Initialize the list of lines that will make up the prompt
-        lines: list[str] = [
-            f"You are coding for the language: {self.language_name}.\n\n",
-        ]
-        lines.append("--- SOURCE DOCUMENT ---")
-        lines.append(document_text_full)
-        lines.append("") # Newline after document text.
-
-        lines.append(
-            "Code each variable below based on the source document above.",
-        )
-        lines.append(
-            "For each, assign the most appropriate code and briefly justify your choice.\n",
-        )
-
-        # Start by simply listing the variables.
-        lines.append("Code ONLY the following variables: " + ", ".join(var["ID"] for var in variables) +".\n")
-
-        # Initialise
+        # Initialise the current section to None to track section changes.
         current_section = None
 
         # Iterate over each variable to build the prompt
@@ -353,6 +340,56 @@ class Coder():
                 lines.append(description)
 
             lines.append("")
+
+        return lines
+
+    def build_coding_prompt(
+            self,
+            variables: list[dict],
+            codes_by_var: dict[str, list],
+            document_text_full: str,
+        ) -> str:
+        """
+        Build a prompt for coding variables based on their definitions and available codes.
+
+        Args:
+            variables (list[dict]): A list of variable dictionaries.
+            codes_by_var (dict[str, list]): A dictionary mapping variable IDs to lists of code dictionaries.
+            document_text_full (str): The full text of the document to be coded.
+
+        Returns:
+            str: The constructed coding prompt.
+        """
+
+        # Initialize the list of lines that will make up the prompt
+        lines: list[str] = [
+            f"You are coding for the language: {self.language_name}.\n",
+        ]
+
+        # Possible other names
+        if hasattr(self, "lgcode") and self.lgcode:
+            lines.append(f"An alternative data source gives this language's name as: {self.lgcode}.\n")
+
+        lines.append("--- SOURCE DOCUMENT ---")
+        lines.append(document_text_full)
+        lines.append("") # Newline after document text.
+
+        lines.append(
+            "Code each variable below based on the source document above.",
+        )
+        lines.append(
+            "For each, assign the most appropriate code and briefly justify your choice.\n",
+        )
+
+        # Start by simply listing the variables.
+        lines.append("Code ONLY the following variables: " + ", ".join(var["ID"] for var in variables) +".\n")
+
+        # Build variables description section.
+        lines = self.build_variables_description_section(
+            lines = lines,
+            variables = variables,
+            codes_by_var = codes_by_var,
+        )
 
         return "\n".join(lines)
 
@@ -999,18 +1036,40 @@ class Coder():
         # Estimate the number of tokens used by the system message and document file.
         prefix_tokens = self.estimate_tokens(system_msg["content"]) # + estimate_tokens(document_text_full)
 
-        # Get a dict storing estimated number of tokens per variable definition
-        var_size = {
-            v["ID"]: self.estimate_tokens(self.build_coding_prompt([v], codes_by_var, document_text_full))
-            for v in variables
-        }
+        # Estimate the number of tokens used by the document text.
+        doc_tokens = self.estimate_tokens(document_text_full)
+
+        # Get a dict storing estimated number of tokens per variable definition.
+        # This will be slightly inaccurate because here we're pretending each variable is coded independently, 
+        # whereas in reality the LLM sees the entire batch together.
+        # But it will do as an estimate.
+        var_size: dict[str, int] = {}
+
+        # For each variable...
+        for v in variables:
+
+            # Initialise list for passing in
+            lines = copy.deepcopy([])
+
+            # First get the lines.
+            lines = self.build_variables_description_section(
+                lines = lines,
+                variables = [v], 
+                codes_by_var = codes_by_var,
+            )
+
+            # Then convert them to string.
+            var_text = "\n".join(lines)
+
+            # Then estimate the number of tokens for this variable.
+            var_size[v["ID"]] = self.estimate_tokens(var_text)
 
         # Pack variables into batches based on their estimated token sizes and the context budget
         try:
             batches = self.pack_batches(
                 variables = variables,
                 var_size = var_size,
-                prefix_tokens = prefix_tokens,
+                prefix_tokens = prefix_tokens + doc_tokens, # doc text is in user prompt, but needs to count in the prefix tokens
                 context_budget = context_budget * 0.9, # Reserve 10% of the context budget for safety margin
                 response_reserve_per_var = response_reserve_per_var,
             )
@@ -1037,7 +1096,9 @@ class Coder():
 
             # If there are multiple batches, print batch information
             if multi:
-                batch_tokens = prefix_tokens + sum(var_size[v["ID"]] for v in batch)
+
+                # Prefix is system prompt, doc is in the user prompt, variables in the batch are in the user prompt. 
+                batch_tokens = prefix_tokens + doc_tokens + sum(var_size[v["ID"]] for v in batch)
                 print(
                     f"[blue]Batch {i}/{len(batches)} ({len(batch)} vars, ~{batch_tokens // 1000}k tok)…[/blue]",
                     file=sys.stderr,
@@ -1105,11 +1166,11 @@ class Coder():
             print(f"  [green]JSON saved → [spring_green2]{json_path}[/spring_green2][/green]", file=sys.stderr)
 
             # Figure out from meta how long it took.
-            # If less than 5s and api_base begins "openai/", pause for 5s because we're allowed 2 requests per 10 seconds.
+            # If less than 2s and api_base begins "openai/", pause for 2s because we're curently allowed 10 requests per 10 seconds.
             try:
-                if api_base and api_base.startswith("openai/") and "elapsed" in meta and float(meta["elapsed"]) < 5:
-                    print(f"  [yellow]Pausing for 5s to respect provider rate limit...[/yellow]", file=sys.stderr)
-                    time.sleep(5)
+                if api_base and api_base.startswith("openai/") and "elapsed" in meta and float(meta["elapsed"]) < 2:
+                    print(f"  [yellow]Pausing for 2s to respect provider rate limit...[/yellow]", file=sys.stderr)
+                    time.sleep(2)
             except Exception as e:
                 print(f"  [yellow]Warning: Failed to enforce provider rate limit: {e}[/yellow]", file=sys.stderr)
 

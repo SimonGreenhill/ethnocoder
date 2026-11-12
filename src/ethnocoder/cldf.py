@@ -260,8 +260,11 @@ def write_gold(ds: pycldf.Dataset, out_dir: Path, sources: list[str] | None = No
     # Loop at each source
     for key in tqdm(sorted(source_index), desc="Writing gold files"):
 
-        # If we're not writing this source, continue.
+        # Here we are looking for the STRING of src in the STRING of key.
+        # So multiple keys for the same source (i.e. corresponding to multiple glottocodes)
+        # will get written at different passes of the loop, into different gold files.
         if sources and not any(src in key for src in sources):
+            # If we're not writing this source, continue.
             continue
 
         # Get all codings for this source.

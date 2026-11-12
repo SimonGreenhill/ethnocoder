@@ -112,6 +112,23 @@ def prepare(
             print(f"  [red]No glottocode found for subdirectory {subdir_path}[/red]")
             return None, None
 
+        # Initialise lgcode as None
+        lgcode = None
+
+        # Use pycldf dataset, sources object.
+        # The entry.id of each entry in ds.sources is the bibtex key, which here should be subdir.
+        # We can look for a matching entry and extract the lgcode if available.
+        bibtex_key = subdir
+        if bibtex_key in ds.sources:
+            entry = ds.sources[bibtex_key]
+            if entry.get("lgcode", None):
+                lgcode = entry.get('lgcode')
+            else:
+                print(f"  [yellow]No lgcode found in entry for bibtex key {bibtex_key}[/yellow]")
+                print(entry)
+        else:
+            print(f"  [yellow]No entry found in ds.sources for bibtex key {bibtex_key}[/yellow]")
+
         # Append info to retlist
         retlist.append({
             "subdir_path": subdir_path,
@@ -119,6 +136,7 @@ def prepare(
             "fname_gold": json_file,
             "glottocode": glottocode,
             "language_name": language_name,
+            "lgcode": lgcode,
         })
 
     # If everything looks good, create a dedicated output batch directory for this run: output/<DATE>_<BATCH_NUMBER>.
@@ -175,6 +193,7 @@ def run_batch(
 
         # The language name should be args.language
         args.language = entry["language_name"]
+        args.lgcode = entry["lgcode"]
 
         # Specify either the pdf or text document path for the Coder instance
         if "pdf" in entry["fname_document"].lower():

@@ -21,7 +21,7 @@ def collate_results(main_directory: str, target_directory: str) -> None:
                 new_file_name = f"results_all_{subdirectory_name}.tsv"
                 source_path = os.path.join(root, file)
                 target_path = os.path.join(target_directory, new_file_name)
-                shutil.move(source_path, target_path)
+                shutil.copy(source_path, target_path)
                 n_moved += 1
     print(f"[green]Moved {n_moved} files to [spring_green2]{target_directory}[/spring_green2][/green]")
 
