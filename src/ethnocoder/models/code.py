@@ -58,6 +58,13 @@ class Coder():
         # Set language name
         self.language_name = args.language
 
+        # Sanity check
+        if self.language_name is None or self.language_name == "None":
+
+            # When calling `ethnocoder code`, need to figure out how to specify language name automatically.
+            print(f"[red]Error: You must provide a language name.[/red]", file=sys.stderr)
+            sys.exit(1)
+
         # If args contains lgcode, set it as an attribute.
         if hasattr(args, "lgcode"):
             self.lgcode = args.lgcode
