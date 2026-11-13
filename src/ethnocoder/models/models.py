@@ -253,7 +253,7 @@ def llm_stream(
 
     # Send the messages to the LLM and stream the response.
     # If it's a remote call (i.e. openai/), each attempt will have a timeout.
-    use_timeout = model.startswith("openai/")
+    use_timeout = True # model.startswith("openai/") # timeout for local models too
     llm_provider = model.split("/")[0]
     timeout_s = 150
     max_attempts = 5 if use_timeout else 1
