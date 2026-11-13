@@ -10,7 +10,7 @@ from typing import Any, cast
 from rich import print
 import litellm
 
-from ethnocoder.utils import (
+from ethnocoder.common.utils import (
     strip_fences, get_timestamp,
     OLLAMA_URL,
 )

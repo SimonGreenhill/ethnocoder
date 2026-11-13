@@ -2,7 +2,7 @@ import argparse
 from importlib.resources import files
 from pathlib import Path
 
-from ethnocoder import cldf
+from ethnocoder.datasets import cldf
 
 
 def add_subparser(subparsers) -> None:

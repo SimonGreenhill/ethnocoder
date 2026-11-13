@@ -1,4 +1,4 @@
-from ethnocoder.utils import parse_codings, strip_fences
+from ethnocoder.common.utils import parse_codings, strip_fences
 
 
 class TestStripFences:

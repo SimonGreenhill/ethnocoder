@@ -9,7 +9,7 @@ from rich import print
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 
-from ethnocoder.utils import get_timestamp
+from ethnocoder.common.utils import get_timestamp
 
 def summarise_tsv_results(
         directory: str,

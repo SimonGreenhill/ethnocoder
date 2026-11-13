@@ -15,8 +15,8 @@ import sys
 from rich import print
 import pandas as pd
 
-from ethnocoder.cldf import GRAMBANK_MULTISTATE_MAPPINGS
-from ethnocoder.utils import GRAMBANK_CLDF_DIR
+from ethnocoder.datasets.cldf import GRAMBANK_MULTISTATE_MAPPINGS
+from ethnocoder.common.utils import GRAMBANK_CLDF_DIR
 
 def main(
         fpath_gold: Path,

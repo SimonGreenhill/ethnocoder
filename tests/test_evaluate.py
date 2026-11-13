@@ -1,6 +1,6 @@
 import json
 
-from ethnocoder.evaluate import load_codings, load_codings_as_dict, normalize_code
+from ethnocoder.results.evaluate import load_codings, load_codings_as_dict, normalize_code
 
 
 class TestNormalizeCode:

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from ethnocoder.evaluate import load_codings_as_dict
+from ethnocoder.results.evaluate import load_codings_as_dict
 
 GOLD_DIR = Path("gold")
 

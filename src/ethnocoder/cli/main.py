@@ -1,6 +1,10 @@
 import argparse
 
-from ethnocoder import batch, check, code, dataset, evaluate, init, summarise, create_gold
+from ethnocoder.batch import batch
+from ethnocoder.datasets import dataset
+from ethnocoder.datasets import create_gold, init
+from ethnocoder.models import code
+from ethnocoder.results import check, evaluate, summarise
 
 
 def main() -> None:

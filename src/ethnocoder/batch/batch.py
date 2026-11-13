@@ -2,7 +2,7 @@ import json
 import sys
 from pathlib import Path
 
-from ethnocoder.code import Coder #code_pdf, load_codes, load_variables, model_dirname
+from ethnocoder.models.code import Coder #code_pdf, load_codes, load_variables, model_dirname
 
 DOCS_DIR = Path("docs")
 PARAMETERS_CSV = Path("parameters.csv")

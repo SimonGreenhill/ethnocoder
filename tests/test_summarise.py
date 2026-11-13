@@ -1,4 +1,4 @@
-from ethnocoder.summarise import compare
+from ethnocoder.results.summarise import compare
 
 
 class TestCompare:

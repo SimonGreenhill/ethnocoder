@@ -1,4 +1,4 @@
-from ethnocoder.cldf import build_source_index, codings_for_source, strip_pages
+from ethnocoder.datasets.cldf import build_source_index, codings_for_source, strip_pages
 
 
 class TestStripPages:
@@ -15,21 +15,22 @@ class TestStripPages:
 class TestBuildSourceIndex:
     def test_groups_rows_by_stripped_key(self):
         rows = [
-            {"Source": ["a[1]"], "x": 1},
-            {"Source": ["a[2]"], "x": 2},
-            {"Source": ["b"], "x": 3},
+            {"Source": ["a[1]"], "x": 1, "Language_ID": "abcd9876"},
+            {"Source": ["a[2]"], "x": 2, "Language_ID": "abce1234"},
+            {"Source": ["b"], "x": 3, "Language_ID": "abcd9876"},
         ]
         index = build_source_index(rows)
-        assert set(index) == {"a", "b"}
-        assert len(index["a"]) == 2
+        assert set(index) == {"abcd9876_a", "abce1234_a", "abcd9876_b"}
+        assert len(index["abcd9876_a"]) == 1
+        assert len(index["abce1234_a"]) == 1
 
     def test_skips_empty_keys(self):
         # A page-only source strips to "" and is dropped.
         assert build_source_index([{"Source": ["[1-2]"]}]) == {}
 
     def test_row_with_multiple_sources(self):
-        index = build_source_index([{"Source": ["a", "b"], "x": 1}])
-        assert "a" in index and "b" in index
+        index = build_source_index([{"Source": ["a", "b"], "x": 1, "Language_ID": "abcd9876"}])
+        assert "abcd9876_a" in index and "abcd9876_b" in index
 
 
 class TestCodingsForSource:
@@ -39,17 +40,17 @@ class TestCodingsForSource:
     def test_code_id_resolved_to_name(self):
         rows = [{"Parameter_ID": "1", "Code_ID": "c10", "Value": None}]
         result = codings_for_source(rows, self.VARS, self.CODE_NAMES)
-        assert {"id": "1", "code": "present"} in result
+        assert {"id": "1", "code": "present", 'comment': None, 'source': None, 'source_comment': None, 'coders': None} in result
 
     def test_unknown_code_id_passthrough(self):
         rows = [{"Parameter_ID": "1", "Code_ID": "cXX", "Value": None}]
         result = codings_for_source(rows, self.VARS, self.CODE_NAMES)
-        assert {"id": "1", "code": "cXX"} in result
+        assert {"id": "1", "code": "cXX", 'comment': None, 'source': None, 'source_comment': None, 'coders': None} in result
 
     def test_value_fallback_when_no_code_id(self):
         rows = [{"Parameter_ID": "2", "Code_ID": None, "Value": "42"}]
         result = codings_for_source(rows, self.VARS, self.CODE_NAMES)
-        assert {"id": "2", "code": "42"} in result
+        assert {"id": "2", "code": "42", 'comment': None, 'source': None, 'source_comment': None, 'coders': None} in result
 
     def test_missing_param_is_none(self):
         result = codings_for_source([], self.VARS, self.CODE_NAMES)

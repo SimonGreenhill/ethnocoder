@@ -10,8 +10,8 @@ import json
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 
-from ethnocoder.utils import get_timestamp, GRAMBANK_CLDF_DIR, CONTEXT_BUDGET_DEFAULT, is_glottocode
-from ethnocoder.batch_and_summarise import main as batch_and_summarise_main
+from ethnocoder.common.utils import get_timestamp, GRAMBANK_CLDF_DIR, CONTEXT_BUDGET_DEFAULT, is_glottocode
+from ethnocoder.batch.batch_and_summarise import main as batch_and_summarise_main
 
 def plot_metasummary(
         results_dict: dict,

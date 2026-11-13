@@ -6,7 +6,7 @@
 # 5. If everything looks good, create a dedicated output batch directory for this run: output/<DATE>_<BATCH_NUMBER>.
 
 # RUN
-# 1. Use ethnocoder.code.Coder to code each document specifically for the language given by the canonical name and glottocode.
+# 1. Use ethnocoder.models.code.Coder to code each document specifically for the language given by the canonical name and glottocode.
 # 2. Place each model output coding in a dedicated output directory, along with a copy of the gold coding.
 # 3. Create the summary TSV for each document, using methods from check_single.py.
 # 4. Create the overall summary TSV aggregating the results from all documents, using methods from collate_results.py.
@@ -19,12 +19,12 @@ from collections.abc import Iterable
 from typing import cast
 from pathlib import Path
 
-from ethnocoder import cldf
-from ethnocoder.utils import get_timestamp, GRAMBANK_CLDF_DIR, CONTEXT_BUDGET_DEFAULT
-from ethnocoder.code import Coder
-from ethnocoder.check_single import main as check_single_main
-from ethnocoder.collate_results import collate_results
-from ethnocoder.get_results_stats import summarise_tsv_results, plot_accuracy_per_stats
+from ethnocoder.datasets import cldf
+from ethnocoder.common.utils import get_timestamp, GRAMBANK_CLDF_DIR, CONTEXT_BUDGET_DEFAULT
+from ethnocoder.models.code import Coder
+from ethnocoder.results.check_single import main as check_single_main
+from ethnocoder.results.collate_results import collate_results
+from ethnocoder.results.get_results_stats import summarise_tsv_results, plot_accuracy_per_stats
 
 DIR_OUT = "output"
 

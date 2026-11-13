@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from ethnocoder.utils import strip_fences, parse_codings
+from ethnocoder.common.utils import strip_fences, parse_codings
 
 console = Console()
 

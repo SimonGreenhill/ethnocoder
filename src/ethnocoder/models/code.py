@@ -18,8 +18,8 @@ import logging
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 from rich import print
 
-from ethnocoder.models import llm_stream, get_max_context, count_tokens
-from ethnocoder.utils import (
+from ethnocoder.models.models import llm_stream, get_max_context, count_tokens
+from ethnocoder.common.utils import (
     parse_codings, get_timestamp, 
     load_variables, load_codes,
     CONTEXT_BUDGET_DEFAULT,
@@ -488,6 +488,16 @@ class Coder():
 
             # Loop at each item in the current group.
             for variable_id, main_domain in group_items:
+
+                # If context_budget is None, we assume there is no limit and skip the checks.
+                if context_budget is None:
+                    # Append the current batch to the list of batches and start a new batch.
+                    batches.append(current)
+                    current = []
+
+                    # Reset the current tokens to account for the prefix in the new batch.
+                    current_tokens = prefix_tokens
+                    continue
 
                 # Get the size of this variable from the var_size dictionary.
                 size = var_size[variable_id]

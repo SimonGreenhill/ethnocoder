@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import cast
 
-from ethnocoder import cldf
+from ethnocoder.datasets import cldf
 
 
 def add_subparser(subparsers) -> None:

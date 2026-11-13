@@ -2,8 +2,8 @@ import argparse
 from pathlib import Path
 from rich import print
 
-from ethnocoder import cldf
-from ethnocoder.utils import GRAMBANK_CLDF_DIR
+from ethnocoder.datasets import cldf
+from ethnocoder.common.utils import GRAMBANK_CLDF_DIR
 
 def add_subparser(subparsers) -> None:
     p = subparsers.add_parser(
