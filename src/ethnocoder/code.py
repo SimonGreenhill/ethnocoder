@@ -18,7 +18,7 @@ import logging
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 from rich import print
 
-from ethnocoder.models import llm_stream, get_max_context
+from ethnocoder.models import llm_stream, get_max_context, count_tokens
 from ethnocoder.utils import (
     parse_codings, get_timestamp, 
     load_variables, load_codes,
@@ -128,7 +128,12 @@ class Coder():
                 doc_text = self.extract_pdf_text(doc_path, max_chars=self.args.max_chars)
             elif self.bool_is_text:
                 doc_text = self.extract_text(doc_path, max_chars=self.args.max_chars)
-            token_estimate = self.estimate_tokens(doc_text)
+            
+            # Use litellm token estimator
+            token_estimate = count_tokens(
+                model=self.args.model,
+                messages=[{"role": "user", "content": doc_text}],
+            )
             print(f"[blue]Estimated token count of file for {doc_path.stem}: {token_estimate}[/blue]", file=sys.stderr)
             return
     
@@ -392,19 +397,6 @@ class Coder():
         )
 
         return "\n".join(lines)
-
-    def estimate_tokens(self, text: str) -> int:
-        """
-        A rough estimate of the number of tokens in the given text.
-
-        Args:
-            text (str): The input text to estimate token count for.
-
-        Returns:
-            int: Estimated number of tokens in the text.
-        """
-
-        return len(text) // 4
 
     def pack_batches(
         self, 
@@ -1033,11 +1025,17 @@ class Coder():
         # Get the system message: it's the first in the list.
         system_msg = messages[0]
 
-        # Estimate the number of tokens used by the system message and document file.
-        prefix_tokens = self.estimate_tokens(system_msg["content"]) # + estimate_tokens(document_text_full)
+        # # Estimate the number of tokens used by the system message and document file.
+        prefix_tokens = count_tokens(
+            model=self.args.model,
+            messages=[system_msg],
+        )
 
-        # Estimate the number of tokens used by the document text.
-        doc_tokens = self.estimate_tokens(document_text_full)
+        # # Estimate the number of tokens used by the document text.
+        doc_tokens = count_tokens(
+            model=self.args.model,
+            messages=[{"role": "user", "content": document_text_full}],
+        )
 
         # Get a dict storing estimated number of tokens per variable definition.
         # This will be slightly inaccurate because here we're pretending each variable is coded independently, 
@@ -1062,7 +1060,11 @@ class Coder():
             var_text = "\n".join(lines)
 
             # Then estimate the number of tokens for this variable.
-            var_size[v["ID"]] = self.estimate_tokens(var_text)
+            var_size[v["ID"]] = count_tokens(
+                model=self.args.model,
+                messages=[{"role": "user", "content": var_text}],
+            )
+            
 
         # Pack variables into batches based on their estimated token sizes and the context budget
         try:

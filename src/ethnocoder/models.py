@@ -161,6 +161,16 @@ def check_model_demand(
 
     print(f"  [red]Model [grey54 bold]{model}[/grey54 bold] not found in API response.[/red]")
 
+def count_tokens(
+        model: str,
+        messages: list[dict],
+)->int:
+
+    return litellm.token_counter(
+        model=model,       # e.g. "ollama/qwen3.5:35b"
+        messages=messages,
+    )
+
 def llm_stream(
     messages: list[dict],
     model: str,
@@ -233,7 +243,7 @@ def llm_stream(
                 f.write("\n")
 
     # Estimate token usage now.
-    prompt_tokens = litellm.token_counter(
+    prompt_tokens = count_tokens(
         model=model,       # e.g. "ollama/qwen3.5:35b"
         messages=messages,
     )
