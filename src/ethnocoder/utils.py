@@ -11,6 +11,18 @@ OLLAMA_URL = "http://127.0.0.1:11434"
 GRAMBANK_CLDF_DIR = Path(os.path.join("dataset", "grambank-v3.0rc1", "cldf"))
 CONTEXT_BUDGET_DEFAULT = 262144  # quarter of a million
 
+def is_glottocode(code: str) -> bool:
+    """
+    Check if a string is a valid Glottocode.
+
+    Args:
+        code: The string to check.
+
+    Returns:
+        True if the string is a valid Glottocode, False otherwise.
+    """
+    return isinstance(code, str) and len(code) == 8 and code.isalnum() and code.islower() and code[:4].isalpha() and code[4:].isdigit()
+
 def get_timestamp() -> str:
     """
     Get the current timestamp as a string in the format YYYYMMDD_HHMMSS.

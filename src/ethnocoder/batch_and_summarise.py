@@ -328,6 +328,46 @@ def summarise_results(output_batch_directory, retlist, args):
         directory = output_batch_directory,
     )
 
+def main(
+        args: argparse.Namespace,
+):
+
+    # Prepare: check data is consistent and ready to be run in batch.
+    retlist, output_batch_directory = prepare(
+        input_directory = args.input_directory,
+        output_batch_directory = args.output_batch_directory,
+    )
+
+    # Sanity check
+    if retlist is None or output_batch_directory is None:
+        print("[red]Failed to prepare input data.[/red]")
+        sys.exit(1)
+
+    # Run if required.
+    if retlist and not args.prepare_only:
+
+        # Prepare kwargs for running models
+        kwargs = {
+            key: value
+            for key, value in vars(args).items()
+            if key not in {"input_directory", "prepare_only"}
+        }
+
+        # Call the function
+        run_batch(
+            input_directory = args.input_directory,
+            output_batch_directory = output_batch_directory,
+            retlist = retlist,
+            args = args,
+        )
+
+    # Summarise the results after running the batch
+    if output_batch_directory is not None:
+        summarise_results(
+            output_batch_directory = output_batch_directory,
+            retlist = retlist,
+            args = args,
+        )
 
 if __name__ == "__main__":
 
@@ -394,39 +434,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Prepare: check data is consistent and ready to be run in batch.
-    retlist, output_batch_directory = prepare(
-        input_directory = args.input_directory,
-        output_batch_directory = args.output_batch_directory,
-    )
-
-    # Sanity check
-    if retlist is None or output_batch_directory is None:
-        print("[red]Failed to prepare input data.[/red]")
-        sys.exit(1)
-
-    # Run if required.
-    if retlist and not args.prepare_only:
-
-        # Prepare kwargs for running models
-        kwargs = {
-            key: value
-            for key, value in vars(args).items()
-            if key not in {"input_directory", "prepare_only"}
-        }
-
-        # Call the function
-        run_batch(
-            input_directory = args.input_directory,
-            output_batch_directory = output_batch_directory,
-            retlist = retlist,
-            args = args,
-        )
-
-    # Summarise the results after running the batch
-    if output_batch_directory is not None:
-        summarise_results(
-            output_batch_directory = output_batch_directory,
-            retlist = retlist,
-            args = args,
-        )
+    main(args=args)
