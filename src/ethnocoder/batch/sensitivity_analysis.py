@@ -49,6 +49,17 @@ def plot_metasummary(
         raise ValueError("Not enough markers for the number of temperature values.")
     markers = markers[:n_temperatures]
 
+    # Get the total number of results for scaling marker sizes.
+    # It's the sum of ["totals"]["correct"], ["totals"]["incorrect"] and ["totals"]["hedged"]
+    # for each glottocode, under each temperature value.
+    total_results_counts = []
+    for results in results_dict.values():
+        for values in results.values():
+            totals = values["totals"]
+            total_results_counts.append(totals.get("correct", 0) + totals.get("incorrect", 0) + totals.get("hedged", 0))
+    min_count = min(total_results_counts) if total_results_counts else 1
+    max_count = max(total_results_counts) if total_results_counts else 1  # Avoid division by zero later.
+
     j = 0
     for temp, results in results_dict.items():
 
@@ -65,12 +76,21 @@ def plot_metasummary(
             color = colors[i % len(colors)]
             accuracy = values["totals"]["correct_pct"]
 
+            # Marker size scaled by the total number of results for this glottocode.
+            totals = values["totals"]
+            size = totals.get("correct", 0) + totals.get("incorrect", 0) + totals.get("hedged", 0)
+            if min_count == max_count:
+                markersize = 9  # All counts equal: use the midpoint.
+            else:
+                markersize = 6 + 6 * (size - min_count) / (max_count - min_count)
+
             ax1.plot(
                 accuracy, 
                 values["resources"]["total_time"],
                 marker=markers[j], 
                 linestyle="None", 
                 color=color,
+                markersize=markersize,
                 markeredgecolor="black",
                 markeredgewidth=0.6,
             )
@@ -83,7 +103,7 @@ def plot_metasummary(
                     color=color, 
                     marker=markers[0], 
                     linestyle="None", 
-                    label=basename,
+                    label=f"{basename} ({size})",
                     markeredgecolor="black",
                     markeredgewidth=0.6,
                 )

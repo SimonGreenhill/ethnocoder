@@ -139,13 +139,16 @@ def plot_accuracy_per_stats(
         #         # 3. Sum the reasoning tokens for this log entry.
         #         total_reasoning_tokens += int(d.get("completion_tokens_details", {}).get("reasoning_tokens", 0))
 
+        totals = dict_stats.get("totals", {})
+
         # 3c. Store the totals for this subdirectory in the results dict.
         results[os.path.basename(subdir)] = {
             "elapsed_1": dict_stats["resources"]["elapsed_1"],
             "elapsed_2": dict_stats["resources"]["elapsed_2"],
             "total_time": dict_stats["resources"]["total_time"],
             "total_reasoning_tokens": dict_stats["resources"]["total_reasoning_tokens"],
-            "accuracy": dict_stats.get("totals", {}).get("correct_pct", None)
+            "accuracy": dict_stats.get("totals", {}).get("correct_pct", None),
+            "size": totals["correct"] + totals["incorrect"] + totals["hedged"],
         }
 
     # Remove any entries with None accuracy.
@@ -169,23 +172,36 @@ def plot_accuracy_per_stats(
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     subdirectory_handles = []
 
+    # Scale sizes.
+    sizes = [v["size"] for v in results.values()]
+    max_size = max(sizes) if sizes else 1
+    min_size = min(sizes) if sizes else 1
+
     # Plot in a loop so we get the elapsed and the reasoning in the same colour, different shapes.
     for i, (basename, values) in enumerate(sorted(results.items())):
         color = colors[i % len(colors)]
         accuracy = values["accuracy"]
 
+        # Get marker size
+        if min_size == max_size:
+            markersize = 9  # All counts equal: use the midpoint.
+        else:
+            markersize = 6 + 6 * (values["size"] - min_size) / (max_size - min_size)
+
         ax1.plot(
             accuracy, values["total_time"],
-            marker="o", linestyle="None", color=color,
+            marker="o", linestyle="None", color=color, markersize=markersize,
+            markeredgecolor="black", markeredgewidth=0.6,
         )
         ax2.plot(
             accuracy, values["total_reasoning_tokens"],
-            marker="^", linestyle="None", color=color,
+            marker="^", linestyle="None", color=color, markersize=markersize,
+            markeredgecolor="black", markeredgewidth=0.6,
         )
         # ax1.annotate(basename, (accuracy, values["total_time"]), color=color)
 
         subdirectory_handles.append(
-            Line2D([], [], color=color, marker="s", linestyle="None", label=basename)
+            Line2D([], [], color=color, marker="s", linestyle="None", label=f"{basename} ({values['size']})")
         )
 
     ax1.set_xlim(0, 100)
