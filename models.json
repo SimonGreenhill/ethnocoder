@@ -16,9 +16,13 @@
         "context_window": 262144,
         "nickname": "medium"
     },
-    "openai/meta-llama-3.1-8b-instruct": {
+    "ollama/llama3.1:8b": {
         "context_window": 131072,
         "nickname": "small"
+    },
+    "openai/meta-llama-3.1-8b-instruct": {
+        "context_window": 131072,
+        "nickname": "small_gwdg"
     },
     "ollama/llama3.2:1b": {
         "context_window": 131072,

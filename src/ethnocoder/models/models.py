@@ -16,6 +16,8 @@ from ethnocoder.common.utils import (
     FPATH_MODELS_METADATA,
 )
 
+TIMEOUT_DEFAULT = 150
+
 def ollama_get_loaded_models() -> set[str]:
     """
     Get a list of models currently loaded in Ollama.
@@ -212,7 +214,12 @@ def llm_stream(
 
     # Set api base url if provided.
     if api_base:
-        kwargs["api_base"] = api_base
+
+        # If the model name starts with ollama, ignore api_base and warn the user.
+        if model.startswith("ollama/"):
+            print(f"  [yellow]Warning: api_base is ignored for ollama models.[/yellow]")
+        else:
+            kwargs["api_base"] = api_base
 
     # If it's ollama, get the list of loaded models.
     if model.startswith("ollama/"):
@@ -256,7 +263,7 @@ def llm_stream(
     # If it's a remote call (i.e. openai/), each attempt will have a timeout.
     use_timeout = True # model.startswith("openai/") # timeout for local models too
     llm_provider = model.split("/")[0]
-    timeout_s = 150
+    timeout_s = TIMEOUT_DEFAULT
     max_attempts = 5 if use_timeout else 1
 
     # Prevent litellm from passing parameters to models that can't use them
