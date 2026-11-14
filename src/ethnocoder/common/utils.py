@@ -1,3 +1,4 @@
+import argparse
 import json
 from datetime import datetime
 import sys
@@ -10,6 +11,17 @@ import csv
 OLLAMA_URL = "http://127.0.0.1:11434"
 GRAMBANK_CLDF_DIR = Path(os.path.join("dataset", "grambank-v3.0rc1", "cldf"))
 CONTEXT_BUDGET_DEFAULT = 262144  # quarter of a million
+FPATH_MODELS_METADATA = "models.json"
+
+
+def parse_csv_list(value: str) -> list[str]:
+    """Parse a comma-separated argument and reject empty or duplicate entries."""
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    if not items:
+        raise argparse.ArgumentTypeError("Provide at least one comma-separated value.")
+    if len(items) != len(set(items)):
+        raise argparse.ArgumentTypeError("Values must not contain duplicates.")
+    return items
 
 def is_glottocode(code: str) -> bool:
     """

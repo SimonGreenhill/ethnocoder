@@ -13,6 +13,7 @@ import litellm
 from ethnocoder.common.utils import (
     strip_fences, get_timestamp,
     OLLAMA_URL,
+    FPATH_MODELS_METADATA,
 )
 
 def ollama_get_loaded_models() -> set[str]:
@@ -90,7 +91,7 @@ def get_max_context(
         except litellm.exceptions.ModelNotMappedError:
 
             # Try models.json file.
-            models_path = "models.json"
+            models_path = FPATH_MODELS_METADATA
             if os.path.exists(models_path):
                 with open(models_path, "r", encoding="utf-8") as f:
                     models_data = json.load(f)
