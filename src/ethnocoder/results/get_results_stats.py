@@ -12,7 +12,8 @@ from ethnocoder.plotting.plot_accuracy_time_reasoning import plot_accuracy_per_s
 def summarise_tsv_results(
         directory: str,
         bool_output_to_terminal: bool = True,
-    ) -> None:
+        tsv_files: list[str] | None = None,
+    ) -> str:
     """
     Load results TSVs from the specified directory and compute per-variable statistics.
     Output the results to a summary TSV file in the same directory.
@@ -21,13 +22,21 @@ def summarise_tsv_results(
     Args:
         directory (str): Directory containing the results TSV files.
         bool_output_to_terminal (bool): Whether to print the summary to the terminal. Defaults to True.
+        tsv_files (list[str] | None): List of specific TSV files to process. If None, all TSV files matching "results_all*.tsv" in the directory will be used. Defaults to None.
+    Returns:
+        str: Path to the summary TSV file generated. Returns an empty string if no summary was created.
     """
 
     # From the directory, get all TSV files with format "results_all*.tsv"
-    tsv_files = [os.path.join(directory, f) for f in os.listdir(directory) if f.startswith("results_all") and f.endswith(".tsv")]
+    if tsv_files is None:
+        tsv_files = [
+            os.path.join(directory, f)
+            for f in os.listdir(directory)
+            if f.startswith("results_all") and f.endswith(".tsv")
+        ]
     if not tsv_files:
         print(f"[red]No results TSV files found in {directory}[/red]")
-        return
+        return ""
 
     # Load each TSV file into a DataFrame and concatenate them
     all_results = []
@@ -38,7 +47,7 @@ def summarise_tsv_results(
     # If something went wrong and no data was loaded, exit
     if not all_results:
         print(f"[red]No data found in TSV files in {directory}[/red]")
-        return
+        return ""
 
     # Concatenate all loaded DataFrames into a single DataFrame
     results_df = pd.concat(all_results, ignore_index=True)
@@ -85,6 +94,8 @@ def summarise_tsv_results(
     # Output summary if requested
     if bool_output_to_terminal:
         print(summary)
+
+    return summary_file
 
 
 if __name__ == "__main__":

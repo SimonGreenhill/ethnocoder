@@ -2,6 +2,7 @@ import argparse
 import shutil
 from pathlib import Path
 
+from ethnocoder.common.utils import parse_csv_list
 from ethnocoder.results.check_single import main as check_single
 from ethnocoder.results.get_results_stats import summarise_tsv_results
 
@@ -9,7 +10,8 @@ from ethnocoder.results.get_results_stats import summarise_tsv_results
 def calculate_stats(
         root: Path, 
         delete_existing_tsvs: bool = False,
-        bool_output_to_terminal: bool = True
+        bool_output_to_terminal: bool = True,
+        excluded_languages: list[str] | None = None,
     ) -> None:
     """
     Calculate statistics for a batch of language directories.
@@ -18,6 +20,7 @@ def calculate_stats(
         root (Path): The root directory containing language subdirectories.
         delete_existing_tsvs (bool): Whether to delete existing TSV files before processing.
         bool_output_to_terminal (bool): Whether to print output to the terminal.
+        excluded_languages: Language directory names to exclude from processing and summaries.
     """
 
     root = root.resolve()
@@ -32,6 +35,24 @@ def calculate_stats(
         path for path in root.iterdir()
         if path.is_dir() and path.name not in {"summary", "metasummary"}
     )
+
+    # Validate exclusions before processing or deleting any files.
+    if excluded_languages:
+        excluded = set(excluded_languages)
+        missing = excluded - {path.name for path in language_dirs}
+
+        if missing:
+            raise ValueError(f"Language directories not found: {sorted(missing)}")
+
+        # The deletion option affects the entire batch, including excluded languages.
+        if delete_existing_tsvs:
+            raise ValueError(
+                "--delete-existing-tsvs cannot be used with --exclude-languages"
+            )
+
+        language_dirs = [path for path in language_dirs if path.name not in excluded]
+        print(f"Excluding languages: {', '.join(excluded_languages)}")
+
     if not language_dirs:
         raise ValueError(f"No language directories found in {root}")
 
@@ -68,8 +89,8 @@ def calculate_stats(
             summary_dir = summary_dir / model
         summaries.setdefault(summary_dir, set()).add(f"results_all_{language}.tsv")
 
-    # The summariser reads every results_all*.tsv in its directory.
-    if not delete_existing_tsvs:
+    # Keep the existing stale-input check for full-batch summaries.
+    if not delete_existing_tsvs and not excluded_languages:
         for summary_dir, expected in summaries.items():
             if summary_dir.is_dir():
                 stale = [
@@ -101,8 +122,13 @@ def calculate_stats(
             summary_dir / f"results_all_{language}.tsv",
         )
 
-    for summary_dir in summaries:
-        summarise_tsv_results(str(summary_dir), bool_output_to_terminal=bool_output_to_terminal)
+    # Pass only this run's TSVs so old files cannot enter a partial summary.
+    for summary_dir, filenames in summaries.items():
+        summarise_tsv_results(
+            directory=str(summary_dir),
+            bool_output_to_terminal=bool_output_to_terminal,
+            tsv_files=[str(summary_dir / name) for name in sorted(filenames)],
+        )
 
 
 if __name__ == "__main__":
@@ -113,5 +139,15 @@ if __name__ == "__main__":
         action="store_true",
         help="Delete all existing TSV files under the batch directory first.",
     )
+    parser.add_argument(
+        "--exclude-languages",
+        type=parse_csv_list,
+        help="Comma-separated language directory names to exclude.",
+    )
     args = parser.parse_args()
-    calculate_stats(args.directory, args.delete_existing_tsvs, bool_output_to_terminal=True)
+    calculate_stats(
+        root=args.directory,
+        delete_existing_tsvs=args.delete_existing_tsvs,
+        bool_output_to_terminal=True,
+        excluded_languages=args.exclude_languages,
+    )

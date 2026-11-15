@@ -100,6 +100,7 @@ def prepare(
         input_directory: str,
         models: list[str],
         output_batch_directory: str | None = None,
+        languages: list[str] | None = None,
 ) -> tuple[list[dict] | None, str | None]:
     """
     Prepare the input data for batch processing.
@@ -107,6 +108,7 @@ def prepare(
     Args:
         input_directory (str): Path to the input directory containing subdirectories with documents and gold-coding JSON files.
         output_batch_directory (str | None): Path to the output batch directory for this run. If None, a new directory will be created.
+        languages (list[str] | None): Input folder names or glottocodes to include.
     Returns:
         list[dict]: A list of dictionaries containing information about each subdirectory, including glottocode and canonical language name.
                     Each dictionary has the keys: "subdir_path", "fname_document", "fname_gold", "glottocode", and "language_name".
@@ -116,7 +118,7 @@ def prepare(
     
     # Initialise return list
     retlist = []
-    languages = []
+    matched_languages = set()
 
     # Check that ALL subdirectories of the input directory have the following format:
     # each containing a single document (either PDF or plaintext) and a JSON gold-coding file.
@@ -128,11 +130,22 @@ def prepare(
         if not os.path.isdir(subdir_path):
             continue
 
-        # Append this language to the list of languages
-        languages.append(subdir)
-
         # Get the files
         files = os.listdir(subdir_path)
+
+        if languages is not None:
+            identifiers = {subdir}
+            identifiers.update(
+                filename.split("_", 1)[0]
+                for filename in files
+                if filename.endswith(".json")
+            )
+            matches = identifiers.intersection(languages)
+            if not matches:
+                continue
+            if matched_languages.intersection(matches):
+                raise ValueError(f"Language identifier matches multiple inputs: {sorted(matches)}")
+            matched_languages.update(matches)
 
         # There should be exactly 2.
         if len(files) != 2:
@@ -165,6 +178,11 @@ def prepare(
             "language_name": language_name,  # Resolved from special names or CLDF
             "lgcode": lgcode,
         })
+
+    if languages is not None:
+        missing = set(languages) - matched_languages
+        if missing:
+            raise ValueError(f"Language inputs not found: {sorted(missing)}")
 
     # CHeck for existing output batch directory
     if output_batch_directory is not None:
@@ -363,6 +381,7 @@ def main(
         input_directory = args.input_directory,
         models = args.models,
         output_batch_directory = args.output_batch_directory,
+        languages = args.languages,
     )
 
     # Sanity check
@@ -382,7 +401,7 @@ def main(
         )
 
     # Summarise the results after running the batch
-    if retlist and not args.prepare_only and output_batch_directory is not None:
+    if retlist and not args.prepare_only and not args.skip_summary and output_batch_directory is not None:
         summarise_results(
             output_batch_directory = output_batch_directory,
             retlist = retlist,
@@ -411,6 +430,12 @@ if __name__ == "__main__":
         help="Comma-separated models (default: tiny,small,medium,large).",
     )
 
+    parser.add_argument(
+        "--languages",
+        type=parse_csv_list,
+        default=None,
+        help="Comma-separated input folder names or glottocodes; defaults to all languages.",
+    )
     # NB DO NOT use -p as it clashes with -p in code.py, which this script passes args to.
     parser.add_argument("-o", "--output-batch-directory")
 
@@ -418,6 +443,11 @@ if __name__ == "__main__":
     # NB DO NOT use -p as it clashes with -p in code.py, which this script passes args to.
     mode.add_argument("--prepare-only", action="store_true")
     mode.add_argument("--summarise-only", action="store_true")
+    parser.add_argument(
+        "--skip-summary",
+        action="store_true",
+        help="Run the batch without summarising the results.",
+    )
 
     # Params for coder
     # model: the LLM to use for coding the document
@@ -473,6 +503,8 @@ if __name__ == "__main__":
 
     if args.summarise_only and not args.output_batch_directory:
         parser.error("--summarise-only requires -o")
+    if args.summarise_only and args.skip_summary:
+        parser.error("--summarise-only cannot be combined with --skip-summary")
 
     # Find input
     if args.input_directory is None:
