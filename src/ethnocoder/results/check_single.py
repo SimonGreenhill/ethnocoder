@@ -69,34 +69,38 @@ def main(
         "correct": 0, # Value matches exactly, including question marks
         "incorrect": 0, # Value does not match, including where gold has a question mark and model output does not
         "hedged": 0, # Gold value is determinate but model output has a question mark
+        "model_missing": 0 # Model output missing 'code' field for this ID
     }
+
     for gold_entry in gold_data:
         gold_id = gold_entry["id"]
+        value_gold = gold_entry["code"]
 
-        # Get the location of this ID in the list, then retrieve the corresponding entry from the model output file.
-        model_output_index = model_output_ids.index(gold_id) if gold_id in model_output_ids else None
-
-        if model_output_index is None:
-            # print(f"  [magenta]ID {gold_id} from gold file not found in model output file.[/magenta]")
+        # A missing gold value is not part of the denominator.
+        if pd.isna(value_gold):
             continue
 
-        # Get this entry from the model output file using the index.
+        model_output_index = model_output_ids.index(gold_id) if gold_id in model_output_ids else None
+        if model_output_index is None:
+            stats_dict["model_missing"] += 1
+            continue
+
         model_output_entry = codings_with_ids[model_output_index]
 
-        # Check the ID matches
         if model_output_entry["id"] != gold_id:
             print(f"  [red]ID mismatch for gold ID {gold_id} in model output file.[/red]")
             sys.exit(1)
-        
-        # Get a unique identifier for this pair of values
-        value_gold = gold_entry["code"]
 
-        # debug
         try:
             value_model_output = model_output_entry["code"]
         except KeyError:
             print(f"  [red]ID {gold_id} from model output file missing 'code' field.[/red]")
-            value_model_output = 99 # Use 99 to indicate no "code" field was returned for this ID.
+            stats_dict["model_missing"] += 1
+            continue
+
+        if pd.isna(value_model_output):
+            stats_dict["model_missing"] += 1
+            continue
 
         # String them together with an underscore to create a unique identifier
         unique_identifier = f"{value_gold}_{value_model_output}"
@@ -186,18 +190,16 @@ def main(
     if bool_output_to_terminal:
         total = sum(stats_dict.values())
         print(f"\n[blue]Totals: ({total} values)[/blue]")
+        colors = {
+            "correct": "green",
+            "incorrect": "red",
+            "hedged": "yellow",
+            "model_missing": "blue",
+        }
         for key, value in stats_dict.items():
-
-            # Print colours
-            if key == "correct":
-                print(f"  [green]{key.capitalize()}:   {value:>3} ({value/total:.1%})[/green]")
-            elif key == "incorrect":
-                print(f"  [red]{key.capitalize()}: {value:>3} ({value/total:.1%})[/red]")
-            elif key == "hedged":
-                print(f"  [yellow]{key.capitalize()}:    {value:>3} ({value/total:.1%})[/yellow]")
-            else:
-                print(f"  [blue]{key.capitalize()}: {value:>3} ({value/total:.1%})[/blue]")
-            continue
+            percentage = value / total if total else 0
+            color = colors[key]
+            print(f"  [{color}]{key.capitalize()}: {value:>3} ({percentage:.1%})[/{color}]")
 
     # Call dedicated output function
     output_results(
@@ -237,13 +239,13 @@ def output_results(
     # Build output dict
     output_dict = results_dict
 
-    output_dict["totals"] = stats_dict
+    output_dict["totals"] = stats_dict.copy()
 
-    # Include percentages in totals
     total = sum(stats_dict.values())
-    output_dict["totals"]["correct_pct"] = round(stats_dict["correct"] * 100 / total, 1) if total > 0 else 0
-    output_dict["totals"]["incorrect_pct"] = round(stats_dict["incorrect"] * 100 / total, 1) if total > 0 else 0
-    output_dict["totals"]["hedged_pct"] = round(stats_dict["hedged"] * 100 / total, 1) if total > 0 else 0
+    for key in ("correct", "incorrect", "hedged", "model_missing"):
+        output_dict["totals"][f"{key}_pct"] = (
+            round(stats_dict[key] * 100 / total, 1) if total > 0 else 0
+        )
 
     # Write the statistics to a JSON file
     out_dict_fpath = out_dir / "stats.json"
@@ -285,6 +287,14 @@ def output_results(
     df_gold = pd.DataFrame(gold_data)
     df_model_output = pd.DataFrame(model_output_data['codings'])
 
+    # for column in ("id", "code"):
+    #     if column not in df_gold.columns:
+    #         df_gold[column] = None
+
+    # for column in ("id", "code", "confidence", "justification", "quote", "pages"):
+    #     if column not in df_model_output.columns:
+    #         df_model_output[column] = None
+
     # Merge df_gold into df_feature_grouping; call df_gold's "code" column "gold"
     df_gold = df_gold.rename(columns={"code": "gold"})
     df_gold = df_gold.rename(columns={"comment": "human_comment"})
@@ -319,9 +329,13 @@ def output_results(
         axis=1
     )
 
-    # If the model_output value is None, change the verdict to "missing_model"
+    # Only count missing model values when gold is present.
     df_feature_grouping["verdict"] = df_feature_grouping.apply(
-        lambda row: "missing_model" if row["model_output"] is None or pd.isna(row["model_output"]) else row["verdict"],
+        lambda row: (
+            "missing_model"
+            if pd.notna(row["gold"]) and pd.isna(row["model_output"])
+            else row["verdict"]
+        ),
         axis=1
     )
 
