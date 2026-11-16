@@ -48,7 +48,7 @@ import matplotlib.pyplot as plt
 
 from ethnocoder.common.utils import get_timestamp, parse_csv_list
 
-FPATH_MAJORITY = os.path.join("sandbox", "majority.json")
+FPATH_MAJORITY = "majority.json"
 
 LANGUAGE_LABELS = { # quick fix, needs doing properly with the CLDF dataset
     "mock_dutch": "Mock Dutch",
