@@ -239,7 +239,7 @@ def llm_stream(
             models_metadata = json.load(f)
 
         if model in models_metadata and "api_base" in models_metadata[model]:
-            kwargs["api_base"] = models_metadata[model]["api_base"]
+            api_base = kwargs["api_base"] = models_metadata[model]["api_base"]
 
         if model in models_metadata and "api_key_envvar" in models_metadata[model]:
             api_key_envvar = models_metadata[model]["api_key_envvar"]

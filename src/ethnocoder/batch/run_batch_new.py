@@ -297,7 +297,10 @@ def run_batch(
         if nickname in args.models:
             if nickname in model_ids:
                 raise ValueError(f"Duplicate model nickname: {nickname}")
-            model_ids[nickname] = model_id
+            model_ids[nickname] = {
+                "model_id": model_id,
+                "api_base": config.get("api_base", None),
+            }
 
     missing = set(args.models) - model_ids.keys()
     if missing:
@@ -318,7 +321,8 @@ def run_batch(
             run_args = copy.deepcopy(args)
             run_args.language = entry["language_name"]
             run_args.lgcode = entry["lgcode"]
-            run_args.model = model_ids[model]
+            run_args.model = model_ids[model]["model_id"]
+            run_args.api_base = model_ids[model]["api_base"]
             run_args.out_dir = os.path.join(
                 output_batch_directory, entry["folder_name"], model
             )
