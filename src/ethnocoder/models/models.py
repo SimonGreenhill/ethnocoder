@@ -313,18 +313,27 @@ def llm_stream(
                 call_kwargs["timeout"] = timeout_s
 
             # All the customised things for reasoning effort:
-            # OpenAI / Gemini / DeepSeek API / Meta
-            call_kwargs["reasoning_effort"] = "high" if bool_thinking else "low"
-            # Anthropic API
-            call_kwargs["output_config"] = { 
-                "effort": "medium" if bool_thinking else "low",
-            }
-            # Ollama
-            call_kwargs["think"] = True if bool_thinking else False
+            if is_anthropic:
+                call_kwargs["output_config"] = {
+                    "effort": "medium" if bool_thinking else "low",
+                }
 
-            # Temperature and top_p
-            call_kwargs["temperature"] = temperature
-            call_kwargs["top_p"] = top_p
+                # # Add cache control -- MUST BE ENABLED AT ORG LEVEL
+                # call_kwargs["cache_control"] = {"type": "ephemeral"}
+
+            else:
+                call_kwargs["reasoning_effort"] = "high" if bool_thinking else "low"
+                call_kwargs["temperature"] = temperature
+                call_kwargs["top_p"] = top_p
+
+                if model.startswith("ollama/"):
+                    call_kwargs["think"] = bool_thinking
+                    call_kwargs["extra_body"] = {
+                        "keep_alive": "24h",
+                        "options": {"num_ctx": context_budget},
+                    }
+
+                call_kwargs["return_response_headers"] = True
 
             # max_tokens: leaving this here to show it's possible
             # call_kwargs["max_tokens"]=1024, # This will cut off the output sharply when max_tokens is reached.
@@ -335,13 +344,13 @@ def llm_stream(
                     model=model,
                     messages=messages,
                     stream_options={"include_usage": True},
-                    extra_body={
-                        "keep_alive": "24h",
-                        "options": {
-                            "num_ctx": context_budget,
-                        },
-                    },
-                    return_response_headers=True,
+                    # extra_body={
+                    #     "keep_alive": "24h",
+                    #     "options": {
+                    #         "num_ctx": context_budget,
+                    #     },
+                    # },
+                    # return_response_headers=True,
                     **call_kwargs
                 )
             )
