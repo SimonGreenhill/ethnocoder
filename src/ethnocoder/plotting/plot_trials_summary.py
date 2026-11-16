@@ -164,6 +164,34 @@ def load_accuracy(stats_path: Path) -> float:
 
     return accuracy
 
+def load_model_stats(stats_path: Path) -> tuple[float, float]:
+    """
+    Load a model's accuracy and elapsed time from stats.json.
+
+    Returns a tuple of (accuracy, elapsed_time).
+    """
+    with stats_path.open("r", encoding="utf-8") as file:
+        stats = json.load(file)
+
+    try:
+        accuracy = float(stats["totals"]["correct_pct"])
+        elapsed = float(stats["resources"]["total_time"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(
+            f"{stats_path} must contain numeric 'totals.correct_pct' and 'resources.total_time' values."
+        ) from error
+
+    if not 0 <= accuracy <= 100:
+        raise ValueError(
+            f"{stats_path}: correct_pct must be between 0 and 100, got {accuracy}."
+        )
+
+    if elapsed < 0:
+        raise ValueError(
+            f"{stats_path}: elapsed time must be non-negative, got {elapsed}."
+        )
+
+    return accuracy, elapsed
 
 def calculate_majority_accuracy(
     gold: dict[str, object],
@@ -233,6 +261,10 @@ def collect_results(
             if d.is_dir() and d.name not in {"summary", "metasummary"}
         ]
 
+    # Initialise model total time count
+    model_times = {model: 0.0 for model in models}
+
+    # Loop at languages
     for language in languages:
         language_directory = root / language
 
@@ -274,9 +306,13 @@ def collect_results(
         for model in models:
             model_directory = language_directory / model
             stats_path = find_stats_file(model_directory)
-            model_accuracies[language][model] = load_accuracy(stats_path)
 
-    return model_accuracies, majority_accuracies, languages
+            # Get model accuracies and times
+            accuracy, elapsed = load_model_stats(stats_path)
+            model_accuracies[language][model] = accuracy
+            model_times[model] += elapsed
+
+    return model_accuracies, majority_accuracies, languages, model_times
 
 
 def plot_results(
@@ -285,6 +321,7 @@ def plot_results(
     output_path: Path,
     languages: list[str],
     models: list[str],
+    model_times: dict[str, float],
 ) -> None:
     """
     Draw grouped model-accuracy points and chance/majority baselines.
@@ -329,13 +366,19 @@ def plot_results(
             for language in languages
         ]
 
+        # Get total time for this model across all languages.
+        total_seconds = model_times[model]
+        minutes, seconds = divmod(round(total_seconds), 60)
+        hours, minutes = divmod(minutes, 60)
+        label = f"{hours}h {minutes:02d}m {seconds:02d}s"
+
         axis.scatter(
             x_values,
             y_values,
             color=colors[model_index % len(colors)],
             marker=markers[model_index % len(markers)],
             s=65,
-            label=model,
+            label=f"{model} ({label})",
             zorder=3,
         )
 
@@ -479,7 +522,7 @@ def main() -> None:
             if not models:
                 raise ValueError(f"No model directories found in {root}")
 
-        model_accuracies, majority_accuracies, languages = collect_results(
+        model_accuracies, majority_accuracies, languages, model_times = collect_results(
             root=root,
             gold_filename=args.gold_file,
             majority_filepath=args.majority_file,
@@ -492,6 +535,7 @@ def main() -> None:
             output_path,
             languages=languages,
             models=models,
+            model_times=model_times,
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         parser.error(str(error))

@@ -364,7 +364,7 @@ def summarise_results(output_batch_directory, retlist, args):
     calculate_stats(root, bool_output_to_terminal=False)
     plot_accuracy_per_stats(str(root))
 
-    model_accuracies, majority_accuracies, languages = collect_results(
+    model_accuracies, majority_accuracies, languages, model_times = collect_results(
         root=root,
         gold_filename=Path("gold.json"),
         majority_filepath=Path(FPATH_MAJORITY),
@@ -377,6 +377,7 @@ def summarise_results(output_batch_directory, retlist, args):
         output_path=root / "summary" / f"trials_summary_{get_timestamp()}.png",
         languages=languages,
         models=models,
+        model_times=model_times,
     )
 
 def main(
