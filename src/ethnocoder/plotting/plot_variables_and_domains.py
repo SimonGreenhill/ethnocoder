@@ -1,6 +1,7 @@
 # Written by Terra, not checked!
 
 import argparse
+import json
 from pathlib import Path
 from rich import print
 
@@ -26,6 +27,7 @@ def draw_stacked_percentages(
     data: pd.DataFrame,
     label_column: str,
     title: str,
+    highlights: dict[str, str] | None = None,
 ) -> None:
     """Draw stacked percentage bars on an existing axis."""
 
@@ -61,6 +63,13 @@ def draw_stacked_percentages(
         left = left + values
 
     axis.set_yticks(ticks=list(positions), labels=labels)
+    if highlights:
+        for tick, feature_id in zip(axis.get_yticklabels(), data[label_column]):
+            if feature_id in highlights:
+                color = highlights[feature_id]
+                tick.set_fontweight("bold")
+                tick.set_color("black")
+                tick.set_bbox(dict(boxstyle="round", facecolor=color, edgecolor=color, alpha=0.4))
     axis.invert_yaxis()
     axis.set_xlim(left=0, right=max(100, left.max()))
 
@@ -108,6 +117,19 @@ def plot_variables_by_domain(
     if set(domains) != expected:
         raise ValueError(f"Expected domains {expected}, found: {domains}")
 
+    highlights = {}
+    for filename, color in (("top_20.json", "green"), ("bottom_20.json", "red")):
+        path = Path("sandbox/intercoder_reliability") / filename
+        if path.exists():
+            with path.open(encoding="utf-8") as f:
+                entries = json.load(f)
+            if not isinstance(entries, dict):
+                raise ValueError(f"Expected a JSON object in {path}")
+            overlap = highlights.keys() & entries.keys()
+            if overlap:
+                raise ValueError(f"Variables appear in both highlight files: {sorted(overlap)}")
+            highlights.update(dict.fromkeys(entries, color))
+
     counts = data.groupby("Main_domain").size()
     pronoun_count = counts.get("pronoun", 0)
     numeral_count = counts.get("numeral", 0)
@@ -133,6 +155,7 @@ def plot_variables_by_domain(
             data=data[data["Main_domain"] == domain],
             label_column="Feature_ID",
             title=domain,
+            highlights=highlights,
         )
 
     fig.suptitle(f"Variables — models: {', '.join(models)}")
