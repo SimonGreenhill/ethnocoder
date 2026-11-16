@@ -48,7 +48,7 @@ import matplotlib.pyplot as plt
 
 from ethnocoder.common.utils import get_timestamp, parse_csv_list
 
-FPATH_MAJORITY = "majority.json"
+FPATH_MAJORITY = os.path.join("sandbox", "majority.json")
 
 LANGUAGE_LABELS = { # quick fix, needs doing properly with the CLDF dataset
     "mock_dutch": "Mock Dutch",
@@ -245,16 +245,23 @@ def collect_results(
         # is evaluated against the gold records in that same language folder.
         gold_path = language_directory / gold_filename
         majority_path = majority_filepath
+        use_majority = True
 
         if not gold_path.is_file():
             raise FileNotFoundError(f"Gold file does not exist: {gold_path}")
         if not majority_path.is_file():
-            raise FileNotFoundError(f"Majority file does not exist: {majority_path}")
+            print(f"[yellow]Majority file does not exist: {majority_path}[/yellow]")
+            use_majority = False
 
         gold = load_codings(gold_path)
-        majority = load_codings(majority_path)
-        baseline, missing_ids = calculate_majority_accuracy(gold, majority)
-        majority_accuracies[language] = baseline
+        if use_majority:
+            majority = load_codings(majority_path)
+            baseline, missing_ids = calculate_majority_accuracy(gold, majority)
+            majority_accuracies[language] = baseline
+        else:
+            print(f"[yellow]Using 0.0 for majority accuracy for language {language}[/yellow]")
+            majority_accuracies[language] = 0.0
+            missing_ids = []
 
         if missing_ids:
             print(
