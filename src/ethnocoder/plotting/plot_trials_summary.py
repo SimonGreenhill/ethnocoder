@@ -405,7 +405,7 @@ def main() -> None:
         "--directory",
         type=Path,
         required=True,
-        help="Directory containing the four language subdirectories.",
+        help="Directory containing the language subdirectories.",
     )
     parser.add_argument(
         "--languages",

@@ -307,7 +307,7 @@ def run_batch(
         raise ValueError(f"Unknown model nicknames: {sorted(missing)}")
 
     # Check for existing output directories for each model and raise an error if any are not empty.
-    if args.output_batch_directory is not None:
+    if output_batch_directory is not None:
         for entry in retlist:
             for model in args.models:
                 model_dir = Path(output_batch_directory) / entry["folder_name"] / model
@@ -315,9 +315,14 @@ def run_batch(
                     raise ValueError(f"Model output directory is not empty: {model_dir}")
 
     # For each entry in retlist, create a Coder instance and run it
-    for entry in retlist:
+    i = 0
+    n_total = len(retlist) * len(args.models)
+    for model in args.models:
 
-        for model in args.models:
+        print(f"[blue][bold]***** RUNNING MODEL [grey54]{model}[/grey54] *****[/bold][/blue]")
+
+        for entry in retlist:
+
             run_args = copy.deepcopy(args)
             run_args.language = entry["language_name"]
             run_args.lgcode = entry["lgcode"]
@@ -338,10 +343,8 @@ def run_batch(
 
             Coder(args=run_args).run()
 
-            print(f"  [green]Processed model {model} for document {entry['fname_document']}[/green]")
-
-        # Inform the user that this particular document has been processed
-        print(f"  [green]Processed document for language {entry['language_name']} ({entry['glottocode']}).[/green]")
+            i += 1
+            print(f"[green][bold]{i}/{n_total}[/bold]: Processed document {entry['fname_document']} for language {entry['language_name']} ({entry['glottocode']}) with model {model}[/green]")
 
     # Inform the user that the batch processing is complete
     print("[green]Batch processing complete.[/green]")
@@ -425,7 +428,7 @@ if __name__ == "__main__":
     )
 
     # # Output batch directory
-    # parser.add_argument("-o", "--output-batch-directory", default=None, help="Path to the output batch directory for this run. If None, a new directory will be created.")
+    parser.add_argument("-o", "--output-batch-directory", default=None, help="Path to the output batch directory for this run. If None, a new directory will be created.")
     
     parser.add_argument(
         "--models",
@@ -440,8 +443,6 @@ if __name__ == "__main__":
         default=None,
         help="Comma-separated input folder names or glottocodes; defaults to all languages.",
     )
-    # NB DO NOT use -p as it clashes with -p in code.py, which this script passes args to.
-    parser.add_argument("-o", "--output-batch-directory")
 
     mode = parser.add_mutually_exclusive_group()
     # NB DO NOT use -p as it clashes with -p in code.py, which this script passes args to.
