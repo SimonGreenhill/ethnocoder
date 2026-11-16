@@ -1246,7 +1246,7 @@ class Coder():
         """
 
         # It's anthropic if the model name contains "claude" and doesn't start with "openai/"
-        is_anthropic = "claude" in model.lower() and not model.startswith("openai/")
+        is_anthropic = model.startswith("anthropic/") #"claude" in model.lower() and not model.startswith("openai/")
 
         # If the API base is not provided and the model is an lm_studio model, use the default local API base
         if api_base is None and model.startswith("lm_studio/"):

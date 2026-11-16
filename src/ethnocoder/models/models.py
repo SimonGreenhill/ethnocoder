@@ -82,7 +82,7 @@ def get_max_context(
     if model.startswith("ollama/"):
         return ollama_get_context_length(model.replace("ollama/", ""))
     
-    elif model.startswith("openai/"):
+    elif model.startswith("openai/") or model.startswith("anthropic/"):
 
         # Ask litellm, then try the custom models.json file.
         max_context = None
@@ -114,6 +114,7 @@ def get_max_context(
 def check_model_demand(
         model: str,
         api_base: str | None = None,
+        api_key_envvar: str | None = None,
 ):
     """
     Check the demand for the specified model.
@@ -124,7 +125,9 @@ def check_model_demand(
     """
 
     # Get API key
-    api_key = os.environ["OPENAI_API_KEY"]  # Raises KeyError if it isn't set
+    if api_key_envvar is None:
+        api_key_envvar = "OPENAI_API_KEY" # fallback default
+    api_key = os.environ[api_key_envvar]  # Raises KeyError if it isn't set
 
     # Call 
     try:
@@ -213,6 +216,7 @@ def llm_stream(
         kwargs["response_format"] = {"type": "json_object"}
 
     # Set api base url if provided.
+    api_key_envvar = None
     if api_base:
 
         # If the model name starts with ollama, ignore api_base and warn the user.
@@ -220,6 +224,25 @@ def llm_stream(
             print(f"  [yellow]Warning: api_base is ignored for ollama models.[/yellow]")
         else:
             kwargs["api_base"] = api_base
+
+        # If the model is in models.json, get the api_key_envvar.
+        with open(FPATH_MODELS_METADATA, "r", encoding="utf-8") as f:
+            models_metadata = json.load(f)
+
+        if model in models_metadata and "api_key_envvar" in models_metadata[model]:
+            api_key_envvar = models_metadata[model]["api_key_envvar"]
+
+    else:
+
+        # If api_base is not provided, pull it from models.json.
+        with open(FPATH_MODELS_METADATA, "r", encoding="utf-8") as f:
+            models_metadata = json.load(f)
+
+        if model in models_metadata and "api_base" in models_metadata[model]:
+            kwargs["api_base"] = models_metadata[model]["api_base"]
+
+        if model in models_metadata and "api_key_envvar" in models_metadata[model]:
+            api_key_envvar = models_metadata[model]["api_key_envvar"]
 
     # If it's ollama, get the list of loaded models.
     if model.startswith("ollama/"):
@@ -231,8 +254,8 @@ def llm_stream(
             model_loaded = True
 
     elif model.startswith("openai/") and bool_check_demand:
-        # If it's an OpenAI API call, check model demand.
-        check_model_demand(model=model, api_base=api_base)
+        # If it's an OpenAI API call (i.e. running from GWDG), check model demand.
+        check_model_demand(model=model, api_base=api_base, api_key_envvar=api_key_envvar)
         model_loaded = None
 
     else:

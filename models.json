@@ -1,20 +1,42 @@
 {
+    "anthropic/claude-fable-5-2": {
+        "context_window": 1048576,
+        "nickname": "fable",
+        "api_base": "https://api.anthropic.com",
+        "api_key_envvar": "ANTHROPIC_API_KEY"
+    },
+    "anthropic/claude-opus-5-5": {
+        "context_window": 1048576,
+        "nickname": "frontier",
+        "api_base": "https://api.anthropic.com",
+        "api_key_envvar": "ANTHROPIC_API_KEY"
+    },
     "openai/glm-5.3-flash" : {
-        "context_window": 1048576
+        "context_window": 1048576,
+        "api_base": "https://chat-ai.academiccloud.de/v1",
+        "api_key_envvar": "OPENAI_API_KEY"
     },
     "openai/glm-5.3" : {
-        "context_window": 1048576
+        "context_window": 1048576,
+        "api_base": "https://chat-ai.academiccloud.de/v1",
+        "api_key_envvar": "OPENAI_API_KEY"
     },
     "openai/deepseek-v4.1-flash-1017": {
         "context_window": 1048576,
-        "nickname": "large"
+        "nickname": "large",
+        "api_base": "https://chat-ai.academiccloud.de/v1",
+        "api_key_envvar": "OPENAI_API_KEY"
     },
     "openai/mistral-large-4-1t-a52b": {
-        "context_window": 1048576
+        "context_window": 1048576,
+        "api_base": "https://chat-ai.academiccloud.de/v1",
+        "api_key_envvar": "OPENAI_API_KEY"
     },
     "openai/qwen3.6-35b-a3b": {
         "context_window": 262144,
-        "nickname": "medium"
+        "nickname": "medium",
+        "api_base": "https://chat-ai.academiccloud.de/v1",
+        "api_key_envvar": "OPENAI_API_KEY"
     },
     "ollama/llama3.1:8b": {
         "context_window": 131072,
@@ -22,7 +44,9 @@
     },
     "openai/meta-llama-3.1-8b-instruct": {
         "context_window": 131072,
-        "nickname": "small_gwdg"
+        "nickname": "small_gwdg",
+        "api_base": "https://chat-ai.academiccloud.de/v1",
+        "api_key_envvar": "OPENAI_API_KEY"
     },
     "ollama/llama3.2:1b": {
         "context_window": 131072,
