@@ -27,12 +27,13 @@ def draw_stacked_percentages(
     data: pd.DataFrame,
     label_column: str,
     title: str,
+    title_fontsize: int = 20,
     highlights: dict[str, str] | None = None,
 ) -> None:
     """Draw stacked percentage bars on an existing axis."""
 
     # Font sizes
-    axis.set_title(label=title, fontsize=19)
+    axis.set_title(label=title, fontsize=title_fontsize)
     axis.set_xlabel(xlabel="Percentage", fontsize=18)
     axis.xaxis.set_major_formatter(PercentFormatter(xmax=100))
     axis.tick_params(axis="x", labelsize=16)
@@ -108,6 +109,7 @@ def plot_variables_by_domain(
     domains: list[str],
     models: list[str],
     output_path: Path,
+    bool_highlights: bool = False,
 ) -> None:
     """Save variable bars in four columns, with two domains stacked in the last."""
     if data.empty:
@@ -118,17 +120,18 @@ def plot_variables_by_domain(
         raise ValueError(f"Expected domains {expected}, found: {domains}")
 
     highlights = {}
-    for filename, color in (("top_20.json", "green"), ("bottom_20.json", "red")):
-        path = Path("sandbox/intercoder_reliability") / filename
-        if path.exists():
-            with path.open(encoding="utf-8") as f:
-                entries = json.load(f)
-            if not isinstance(entries, dict):
-                raise ValueError(f"Expected a JSON object in {path}")
-            overlap = highlights.keys() & entries.keys()
-            if overlap:
-                raise ValueError(f"Variables appear in both highlight files: {sorted(overlap)}")
-            highlights.update(dict.fromkeys(entries, color))
+    if bool_highlights:
+        for filename, color in (("top_20.json", "green"), ("bottom_20.json", "red")):
+            path = Path("sandbox/intercoder_reliability") / filename
+            if path.exists():
+                with path.open(encoding="utf-8") as f:
+                    entries = json.load(f)
+                if not isinstance(entries, dict):
+                    raise ValueError(f"Expected a JSON object in {path}")
+                overlap = highlights.keys() & entries.keys()
+                if overlap:
+                    raise ValueError(f"Variables appear in both highlight files: {sorted(overlap)}")
+                highlights.update(dict.fromkeys(entries, color))
 
     counts = data.groupby("Main_domain").size()
     pronoun_count = counts.get("pronoun", 0)
@@ -155,6 +158,7 @@ def plot_variables_by_domain(
             data=data[data["Main_domain"] == domain],
             label_column="Feature_ID",
             title=domain,
+            title_fontsize=30,
             highlights=highlights,
         )
 
@@ -178,6 +182,8 @@ def plot_variables_and_domains(
     summary_file: Path,
     models: list[str],
     grouping_file: Path = Path("feature_grouping_for_analysis.csv"),
+    output_dir: Path | None = None,
+    bool_highlights: bool = False,
 ) -> None:
     """Plot variable percentages and unweighted domain averages."""
     if not models:
@@ -213,14 +219,38 @@ def plot_variables_and_domains(
     )
 
     timestamp = get_timestamp()
-    output_dir = summary_file.parent
+
+    if output_dir is None:
+        output_dir = summary_file.parent
+        output_path_variables_by_domain = output_dir / f"variables_{timestamp}.png"
+        output_path_main = output_dir / f"main_domains_{timestamp}.png"
+        output_path_finer = output_dir / f"finer_domains_{timestamp}.png"
+    else:
+        # Don't add the timestamp if the output directory was specified
+        output_path_variables_by_domain = output_dir / f"variables.png"
+        output_path_main = output_dir / f"main_domains.png"
+        output_path_finer = output_dir / f"finer_domains.png"
+
+    # For all three filepaths, add "_highlights" if bool_highlights is True
+    if bool_highlights:
+        output_path_variables_by_domain = output_path_variables_by_domain.with_name(
+            output_path_variables_by_domain.stem + "_highlights.png"
+        )
+        output_path_main = output_path_main.with_name(
+            output_path_main.stem + "_highlights.png"
+        )
+        output_path_finer = output_path_finer.with_name(
+            output_path_finer.stem + "_highlights.png"
+        )
+
     model_label = ", ".join(models)
 
     plot_variables_by_domain(
         data=summary,
         domains=sorted(grouping["Main_domain"].dropna().unique().tolist()),
         models=models,
-        output_path=output_dir / f"variables_{timestamp}.png",
+        output_path=output_path_variables_by_domain,
+        bool_highlights=bool_highlights,
     )
 
     for data, label, name, filename in (
@@ -231,18 +261,42 @@ def plot_variables_and_domains(
             data=data,
             label_column=label,
             title=f"{name} — models: {model_label}",
-            output_path=output_dir / f"{filename}_{timestamp}.png",
+            output_path=output_path_main if filename == "main_domains" else output_path_finer,
         )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot variable and domain statistics.")
     parser.add_argument("summary_file", type=Path)
+
+    # Output directory for the plots (defaults to the summary file's parent directory).
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Output directory for the plots (default: summary file's parent directory).",
+    )
+
     parser.add_argument("--models", type=parse_csv_list, required=True)
     parser.add_argument(
         "--grouping-file",
         type=Path,
         default=Path("feature_grouping_for_analysis.csv"),
     )
+
+    # Bool to plot highlights on the variables-by-domain plot.
+    parser.add_argument(
+        "--bool-highlights",
+        action="store_true",
+        help="Whether to plot highlights on the variables-by-domain plot.",
+    )
+
     args = parser.parse_args()
-    plot_variables_and_domains(args.summary_file, args.models, args.grouping_file)
+    plot_variables_and_domains(
+        summary_file = args.summary_file, 
+        models = args.models,
+        grouping_file = args.grouping_file,
+        output_dir = args.output_dir,
+        bool_highlights = args.bool_highlights,
+    )

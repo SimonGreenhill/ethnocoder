@@ -230,17 +230,6 @@ def prepare(
 
     # Output metadata for the batch
     batch_id = os.path.basename(os.path.normpath(input_directory))
-    
-    # Simple info
-    metadata = {
-        "batch_id": batch_id,
-        "created_time": timestamp,
-    }
-
-    # Dump metadata to a JSON file, at the top of this batch's output directory
-    metadata_path = os.path.join(output_batch_directory, f"{batch_id}_meta.json")
-    with open(metadata_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=4)
 
     # Create output directories.
     for entry in retlist:
@@ -262,6 +251,29 @@ def prepare(
                 os.path.join(language_directory, model),
                 exist_ok=True,
             )
+    
+    # Top-level metadata file
+    # Add more stuff here as needed.
+    metadata = {
+        "batch_id": batch_id,
+        "created_time": timestamp,
+    }
+
+    # Add language labels to the metadata if available
+    metadata["language_labels"] = {}
+    for entry in retlist:
+
+        # Glottocodes should be retrievable from the gold file.
+        glottocode = Path(entry["fname_gold"]).stem.split("_", 1)[0]
+        metadata["language_labels"][entry["folder_name"]] = {
+            "glottocode": glottocode if is_glottocode(glottocode) else None,
+            "language_name": entry["language_name"],
+        }
+
+    # Dump metadata to a JSON file, at the top of this batch's output directory
+    metadata_path = os.path.join(output_batch_directory, f"{batch_id}_meta.json")
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=4)
 
     print(f"[green]Preparation complete. Output batch directory: [spring_green2]{output_batch_directory}[/spring_green2][/green]")
 
@@ -378,6 +390,7 @@ def summarise_results(output_batch_directory, retlist, args):
         languages=languages,
         models=models,
         model_times=model_times,
+        root=root,
     )
 
 def main(

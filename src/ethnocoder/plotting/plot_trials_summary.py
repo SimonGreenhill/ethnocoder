@@ -30,7 +30,7 @@ Gold and majority JSON files should contain either:
   * an object with a "codings" list of those records; or
   * an object mapping IDs to codes.
 
-For each language, the majority baseline is the percentage of gold IDs whose
+For each language, the typicality baseline is the percentage of gold IDs whose
 gold code matches the code in majority.json. Gold IDs missing from that file
 count as incorrect, and are reported as a warning.
 
@@ -39,6 +39,7 @@ default, then shown. Use --output to choose a different output path.
 """
 
 import os
+import math
 import argparse
 import json
 from pathlib import Path
@@ -50,9 +51,27 @@ from ethnocoder.common.utils import get_timestamp, parse_csv_list
 
 FPATH_MAJORITY = "majority.json"
 
-LANGUAGE_LABELS = { # quick fix, needs doing properly with the CLDF dataset
-    "mock_dutch": "Mock Dutch",
-    "island_carib": "Kalinago (Island Carib)",
+MODEL_SCATTERS = {
+    "tiny": {
+        "shape": "P",
+        "color": "black"
+    },
+    "small": {
+        "shape": "h",
+        "color": "red"
+    },
+    "medium": {
+        "shape": "o",
+        "color": "#009E73"
+    },
+    "large": {
+        "shape": "s",
+        "color": "#E69F00"
+    },
+    "frontier": {
+        "shape": "^",
+        "color": "#0072B2"
+    }
 }
 
 # MODELS = (
@@ -125,8 +144,10 @@ def find_stats_file(model_directory: Path) -> Path:
     the model directory. Requiring exactly one file avoids choosing an
     arbitrary trial when the directory contains multiple results.
     """
+
     if not model_directory.is_dir():
-        raise FileNotFoundError(f"Model directory does not exist: {model_directory}")
+        return None
+        # raise FileNotFoundError(f"Model directory does not exist: {model_directory}")
 
     stats_files = sorted(model_directory.rglob("stats.json"))
 
@@ -243,7 +264,7 @@ def collect_results(
     models: list[str],
 ) -> tuple[dict[str, dict[str, float]], dict[str, float], list[str]]: 
     """
-    Load accuracy for every language/model and calculate each majority baseline.
+    Load accuracy for every language/model and calculate each typicality baseline.
     
     majority_filepath is absolute.
 
@@ -307,6 +328,10 @@ def collect_results(
             model_directory = language_directory / model
             stats_path = find_stats_file(model_directory)
 
+            if stats_path is None:
+                print(f"[yellow]Stats file not found for model {model} in language {language}[/yellow]")
+                continue
+
             # Get model accuracies and times
             accuracy, elapsed = load_model_stats(stats_path)
             model_accuracies[language][model] = accuracy
@@ -322,17 +347,26 @@ def plot_results(
     languages: list[str],
     models: list[str],
     model_times: dict[str, float],
+    bool_averages: bool = False,
+    root: Path | None = None,
 ) -> None:
     """
-    Draw grouped model-accuracy points and chance/majority baselines.
+    Draw grouped model-accuracy points and chance/typicality baselines.
 
     Each model is horizontally offset within each language group. The chance
-    baseline spans the full plot; majority baselines are dashed segments
+    baseline spans the full plot; typicality baselines are dashed segments
     centered on their respective language groups.
     """
 
-    # Prep: order x-axis groups by majority_accuracies, lowest to highest.
-    languages.sort(key=lambda lang: majority_accuracies[lang])
+    # quick fix: if the languages are JUST mock_dutch and island_carib,
+    # put mock_dutch first if the languages are JUST mock_dutch and island_carib.
+    # Otherwise order x-axis groups by majority_accuracies, lowest to highest.
+    if set(languages) == {"mock_dutch", "island_carib"}:
+        languages.sort(key=lambda lang: lang != "mock_dutch")
+    else:
+        languages.sort(key=lambda lang: majority_accuracies[lang])
+
+    
     # Ensure that the majority_accuracies dictionary is also ordered according to the sorted languages.
     majority_accuracies = {lang: majority_accuracies[lang] for lang in languages}
     # Ensure that the model_accuracies dictionary is also ordered according to the sorted languages.
@@ -357,12 +391,17 @@ def plot_results(
     markers = ("o", "s", "^", "D")
 
     for model_index, model in enumerate(models):
+
         x_values = [
             group_positions[language] + model_offsets[model]
             for language in languages
         ]
+        # y_values = [
+        #     model_accuracies[language][model]
+        #     for language in languages
+        # ]
         y_values = [
-            model_accuracies[language][model]
+            model_accuracies[language].get(model, float("nan"))
             for language in languages
         ]
 
@@ -375,8 +414,8 @@ def plot_results(
         axis.scatter(
             x_values,
             y_values,
-            color=colors[model_index % len(colors)],
-            marker=markers[model_index % len(markers)],
+            color=MODEL_SCATTERS[model]["color"] if model in MODEL_SCATTERS else colors[model_index % len(colors)],
+            marker=MODEL_SCATTERS[model]["shape"] if model in MODEL_SCATTERS else markers[model_index % len(markers)],
             s=65,
             label=f"{model} ({label})",
             zorder=3,
@@ -403,33 +442,84 @@ def plot_results(
             linestyle="--",
             linewidth=1.5,
             # Label only the first segment to keep a single legend entry.
-            label="Majority baseline" if index == 0 else "_nolegend_",
+            label="Typicality baseline" if index == 0 else "_nolegend_",
             zorder=2,
         )
 
-    # Xtick labels should be the actual language names, from LANGUAGE_LABELS where possible.
+    # Averages lines
+    if bool_averages:
+        for model_index, model in enumerate(models):
+            
+            # Get the average accuracy
+            avg_accuracies = [model_accuracies[language].get(model, float("nan")) for language in languages]
+
+            # Remove nan
+            avg_accuracies = [acc for acc in avg_accuracies if not math.isnan(acc)]
+
+            # Average over remaining values
+            avg_accuracy = sum(avg_accuracies) / len(avg_accuracies) if avg_accuracies else float("nan")
+
+            # Plot accuracy as a horizontal line across the plot, in the model's colour.
+            axis.axhline(
+                y=avg_accuracy,
+                color=MODEL_SCATTERS[model]["color"] if model in MODEL_SCATTERS else colors[model_index % len(colors)],
+                linestyle=":",
+                linewidth=1.5,
+                label="_nolegend",#f"{model} average" if model_index == 0 else "_nolegend_",
+                zorder=2,
+            )
+
+    # Xtick labels should be the actual language names, from language_labels where possible.
     axis.set_xticks(range(len(languages)))
-    axis.set_xticklabels([LANGUAGE_LABELS.get(lang, lang) for lang in languages])
+
+    # If root is not None, pull the file ending _meta.json from the root
+    # and look for the entry "language_labels" to map language codes to their metadata.
+    language_labels = {}
+    if root is not None:
+
+        # Search for exactly one file ending with _meta.json in the root directory.
+        meta_files = list(root.glob("*_meta.json"))
+        if len(meta_files) == 1:
+            with open(meta_files[0], "r", encoding="utf-8") as f:
+                meta_data = json.load(f)
+                if "language_labels" in meta_data:
+                    language_labels = meta_data["language_labels"]
+
+    # Default to existing <lang> identifier if not found.
+    language_labels = [language_labels.get(lang, lang) for lang in languages]
+
+    # If it's a dict, get "glottocode", unless that's None, in which case use the language name.
+    for i, lang in enumerate(language_labels):
+        if isinstance(lang, dict) and "glottocode" in lang and lang["glottocode"] is not None:
+            language_labels[i] = lang["glottocode"]
+        elif isinstance(lang, dict) and "language_name" in lang and lang["language_name"] is not None:
+            language_labels[i] = lang["language_name"]
+        else:
+            language_labels[i] = str(lang) # fallback
+
+    # Rotate x-axis tick labels for better readability.
+    if len(languages) > 3:
+        axis.set_xticklabels(
+            language_labels,
+            rotation=45,
+            ha="right"
+        )
+    else:
+        axis.set_xticklabels(language_labels)
 
     axis.set_xlim(-0.5, len(languages) - 0.5)
     axis.set_ylim(0, 100)
-    axis.set_xlabel("Language")
-    axis.set_ylabel("Accuracy (%)")
-    axis.set_title("Accuracy by language and model")
+    axis.set_xlabel("Language", fontsize=16)
+    axis.set_ylabel("Accuracy (%)", fontsize=16)
+    axis.set_title("Accuracy by language and model", fontsize=20)
     axis.grid(axis="y", alpha=0.25)
-    axis.legend(title="Model / baseline", loc="lower right")
+    axis.legend(title="Model / baseline", loc="lower right", fontsize=14)
 
     # Increase fontsize of both axes labels and tick labels.
     axis.xaxis.label.set_size(16)
     axis.yaxis.label.set_size(16)
     axis.tick_params(axis="both", which="major", labelsize=14)
 
-    # Rotate x-axis tick labels for better readability.
-    axis.set_xticklabels(
-        [LANGUAGE_LABELS.get(lang, lang) for lang in languages],
-        rotation=45,
-        ha="right"
-    )
 
     figure.tight_layout()
 
@@ -457,6 +547,16 @@ def main() -> None:
         required=True,
         help="Directory containing the language subdirectories.",
     )
+
+    # Output filepath
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Output filepath for the summary plot (default: inside the experiment directory).",
+    )
+
     parser.add_argument(
         "--languages",
         type=parse_csv_list,
@@ -487,6 +587,11 @@ def main() -> None:
             f"(default: {FPATH_MAJORITY})."
         ),
     )
+    parser.add_argument(
+        "--bool-averages",
+        action="store_true",
+        help="Whether to plot average accuracy as horizontal lines per model.",
+    )
     args = parser.parse_args()
 
     root = args.directory.expanduser().resolve()
@@ -496,7 +601,10 @@ def main() -> None:
 
     # Relative output paths are interpreted from the current working directory;
     # if omitted, save the plot inside the experiment directory.
-    output_path = root / "summary" / f"trials_summary_{get_timestamp()}.png"
+    if args.output is not None:
+        output_path = args.output.expanduser().resolve()
+    else:
+        output_path = root / "summary" / f"trials_summary_{get_timestamp()}.png"
 
     try:
         languages = args.languages
@@ -536,6 +644,8 @@ def main() -> None:
             languages=languages,
             models=models,
             model_times=model_times,
+            bool_averages=args.bool_averages,
+            root=root,
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         parser.error(str(error))
