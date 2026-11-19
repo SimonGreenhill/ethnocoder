@@ -79,10 +79,10 @@ def draw_stacked_percentages(
             tick.set_fontweight("bold")
             tick.set_color("black")
             tick.set_bbox(dict(
-                boxstyle="round",
+                boxstyle="round,pad=0.15",
                 facecolor=to_rgba(human, 0.4) if human else "none",
                 edgecolor=model or (to_rgba(human, 0.4) if human else "none"),
-                linewidth=2 if model else 1,
+                linewidth=3 if model else 1,
             ))
 
     axis.invert_yaxis()
@@ -136,7 +136,10 @@ def plot_variables_by_domain(
 
     highlights = {}
     if bool_highlights:
-        for filename, color in (("top_20.json", "green"), ("bottom_20.json", "red")):
+        for filename, color in (
+            ("top_20.json", "green"), 
+            ("bottom_20.json", "red")
+        ):
             path = Path("sandbox/intercoder_reliability") / filename
             if path.exists():
                 with path.open(encoding="utf-8") as f:
