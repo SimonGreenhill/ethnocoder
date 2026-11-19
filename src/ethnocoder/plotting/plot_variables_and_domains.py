@@ -76,7 +76,7 @@ def draw_stacked_percentages(
         model = (highlights_mvm or {}).get(feature_id)
 
         if human or model:
-            tick.set_fontweight("bold")
+            # tick.set_fontweight("bold")
             tick.set_color("black")
             tick.set_bbox(dict(
                 boxstyle="round,pad=0.15",
