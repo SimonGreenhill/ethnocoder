@@ -10,8 +10,8 @@ import sys
 import re
 import time
 from pathlib import Path
-from typing import cast
 import itertools
+from json_repair import repair_json
 
 import pymupdf
 import logging
@@ -27,6 +27,7 @@ from ethnocoder.common.utils import (
 
 # Globals
 PROMPT_FILE = Path('.') / "PROMPT.md"
+N_RETRIES_INVALID_JSON = 5
 
 class Coder():
     def __init__(self, args = None):
@@ -827,6 +828,215 @@ class Coder():
         # Return.
         return review_msg, review_stats
 
+    def handle_invalid_json(
+            self,
+            text: str,
+            codings: list[dict],
+            messages: list[dict],
+            meta: dict,
+            user_content: str,
+            variables: list[dict],
+            codes_by_var: dict[str, list[dict]],
+            document_text_full: str,
+            system_msg: dict,
+            model: str,
+            is_anthropic: bool,
+            api_base: str | None,
+            context_budget: int,
+            bool_thinking: bool,
+            bool_review: bool,
+            bool_run_review_after_fix: bool = True,
+            review_msg: str | None = None,
+        ) -> tuple[list[dict], str, dict, str, str | None]:
+        """
+        Handle invalid JSON responses from the LLM by attempting repair and/or retry.
+
+        Attempt a conservative local repair, then retry with the LLM if needed.
+        Validate the recovered codings and pass them through the normal review flow.
+
+        Args:
+            text: The raw response text from the LLM.
+            meta: Metadata dictionary associated with the response.
+            variables: A list of Grambank features (as dicts) to be coded.
+            codes_by_var: A dictionary mapping variable IDs to their corresponding list of possible codes.
+            document_text_full: The entire document text, prefaced by the document name.
+            system_msg: The system message dictionary for the conversation.
+            model: The model name to use for the LLM.
+            is_anthropic: A boolean indicating if the model is Anthropic.
+            api_base: The base URL for the API, if any.
+            context_budget: The token budget for the LLM context.
+            bool_thinking: A boolean indicating if the LLM should reason heavily.
+            bool_review: A boolean indicating if a review pass should be performed when necessary.
+            bool_run_review_after_fix: A boolean indicating if a review should be run after attempting a fix. Prevents infinite loop review->invalid json->review->invalid json...
+            review_msg: The original review message, when repairing a review response.
+
+        Returns:
+            A tuple containing:
+                - A list of cleaned codings (list[dict]).
+                - The raw response text from the LLM (str).
+                - Metadata dictionary (dict).
+                - User content string (str).
+                - Review message (str | None).
+        """
+
+
+        # Both the local repair and LLM retries need the same parsing and
+        # validation. Return None if the response is not usable coding JSON.
+        def parse_and_validate(response: str) -> list[dict] | None:
+            try:
+                # parse_codings expects an object or list, and a raw_response
+                # wrapper can itself contain invalid JSON.
+                raw = json.loads(response)
+                if not isinstance(raw, (dict, list)):
+                    print(
+                        f"[yellow]    → Expected a JSON object or list, got {type(raw).__name__}.[/yellow]",
+                        file=sys.stderr,
+                    )
+                    return None
+                parsed = parse_codings(response)
+            except json.JSONDecodeError as exc:
+                print(
+                    f"[yellow]    → Invalid JSON: {exc.msg} (line {exc.lineno}, column {exc.colno}).[/yellow]",
+                    file=sys.stderr,
+                )
+                return None
+
+            if not isinstance(parsed, list):
+                print(
+                    f"[yellow]    → Expected a list of codings, got {type(parsed).__name__}.[/yellow]",
+                    file=sys.stderr,
+                )
+                return None
+            if not parsed:
+                print("[yellow]    → No codings were found in the response.[/yellow]", file=sys.stderr)
+                return None
+            if not all(isinstance(c, dict) for c in parsed):
+                print("[yellow]    → The codings list contains an item that is not an object.[/yellow]", file=sys.stderr)
+                return None
+
+            # Mark missing IDs and other coding issues for the review step.
+            validated = self.validate_response(
+                codings=parsed,
+                codes_by_var=codes_by_var,
+                variables=variables,
+                document_text_full=document_text_full,
+            )
+            if not validated:
+                print("[yellow]    → Validation returned no codings.[/yellow]", file=sys.stderr)
+                return None
+            if validated[0].get("invalid_json"):
+                print("[yellow]    → Validation reported invalid JSON.[/yellow]", file=sys.stderr)
+                return None
+            return validated
+
+        # First, try to repair the original response locally. Keep text unchanged
+        # so the original LLM response can still be saved for inspection.
+        validated = None
+        try:
+            repaired = repair_json(text, strict=True)
+        except ValueError as exc:
+            print(f"[yellow]  → Local JSON repair failed: {exc}[/yellow]", file=sys.stderr)
+        else:
+            print("[yellow]    → Attempting to validate repaired JSON.[/yellow]", file=sys.stderr)
+            validated = parse_and_validate(repaired)
+
+        if validated is not None:
+            # A successful local repair needs no JSON retry. Missing IDs, if any,
+            # are dealt with by review_pass or reported below.
+            codings = validated
+            meta = {**meta, "json_repaired": True}
+            print("[yellow]  → JSON repaired locally; original response retained.[/yellow]", file=sys.stderr)
+        else:
+            # Local repair failed. Ask the LLM to fix the actual response, keeping
+            # existing values and completing only unfinished or missing codings.
+            retry_metadata = []
+            for attempt in range(1, N_RETRIES_INVALID_JSON + 1):
+                print(
+                    f"[yellow]  → Retrying invalid JSON ({attempt}/{N_RETRIES_INVALID_JSON})[/yellow]",
+                    file=sys.stderr,
+                )
+
+                # Reuse the original conversation and append the latest invalid
+                # response and a request to correct it.
+                retry_messages = messages + [
+                    {"role": "assistant", "content": text},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your response was invalid or incomplete JSON. Correct the JSON "
+                            "formatting without changing or recoding existing values. Complete "
+                            "only any missing or unfinished codings, then return the complete "
+                            "codings as valid JSON, with no other text."
+                        ),
+                    },
+                ]
+                text, retry_meta = llm_stream(
+                    messages=retry_messages,
+                    model=model,
+                    is_anthropic=is_anthropic,
+                    api_base=api_base,
+                    context_budget=context_budget,
+                    bool_thinking=bool_thinking,
+                    temperature=self.temperature,
+                    top_p=self.top_p,
+                )
+                retry_metadata.append(retry_meta)
+
+                # Stop retrying as soon as the LLM returns usable coding JSON.
+                validated = None
+                try:
+                    repaired = repair_json(text, strict=True)
+                except ValueError as exc:
+                    print(f"[yellow]  → Local JSON repair failed: {exc}[/yellow]", file=sys.stderr)
+                else:
+                    validated = parse_and_validate(repaired)
+                if validated is not None:
+                    codings = validated
+                    meta = {
+                        **meta,
+                        "invalid_json_retries": meta.get("invalid_json_retries", []) + retry_metadata,
+                    }
+                    try:
+                        json.loads(text)
+                    except json.JSONDecodeError:
+                        meta["json_repaired"] = True
+                    break
+            else:
+                # Surface failure rather than passing invalid data to review.
+                meta["invalid_json_retries"] = meta.get("invalid_json_retries", []) + retry_metadata
+                print("[red]  → Invalid JSON after all retries; continuing.[/red]", file=sys.stderr)
+                return [{"invalid_json": True}], text, meta, user_content, review_msg
+
+        # A review response has already been reviewed; do not start another pass.
+        # Report missing IDs before removing validation markers and placeholders.
+        if not bool_run_review_after_fix:
+            missing = [c["id"] for c in codings if c.get("_missing")]
+            if missing:
+                print(
+                    f"[yellow]Warning: Review response is missing codings for: {', '.join(map(str, missing))}[/yellow]",
+                    file=sys.stderr,
+                )
+            return self.clean_codings([c for c in codings if not c.get("_missing")]), text, meta, user_content, review_msg
+
+        # Initial responses follow the normal review path after repair.
+        return self.review_pass(
+            text=text,
+            codings=codings,
+            messages=messages,
+            meta=meta,
+            user_content=user_content,
+            variables=variables,
+            codes_by_var=codes_by_var,
+            document_text_full=document_text_full,
+            system_msg=system_msg,
+            model=model,
+            is_anthropic=is_anthropic,
+            api_base=api_base,
+            context_budget=context_budget,
+            bool_thinking=bool_thinking,
+            bool_review=bool_review,
+        )
+
     def code_batch(
         self,
         variables: list[dict],
@@ -910,16 +1120,109 @@ class Coder():
             document_text_full = document_text_full,
         )
 
-        # Review if requested
-        review_msg = None
+        # If the JSON is invalid, we will keep asking the model until it provides valid JSON.
+        if len(codings) == 0 or codings[0].get("invalid_json"):
+            print(
+                f"[magenta]  → Invalid JSON detected: attempting repair and/or retry...[/magenta]",
+                file=sys.stderr,
+            )
 
-        if bool_review:
+            return self.handle_invalid_json(
+                text = text,
+                codings = codings,
+                messages = messages,
+                meta = meta,
+                user_content = user_content,
+                variables = variables,
+                codes_by_var = codes_by_var,
+                document_text_full = document_text_full,
+                system_msg = system_msg,
+                model = model,
+                is_anthropic = is_anthropic,
+                api_base = api_base,
+                context_budget = context_budget,
+                bool_thinking = bool_thinking,
+                bool_review = bool_review,
+            )
 
-            # Check if we need a review pass based on the validity and confidence of the codings.
-            review_msg, review_stats = self.build_review_message(codings)
+        return self.review_pass(
+            text = text,
+            codings = codings,
+            messages = messages,
+            meta = meta,
+            user_content = user_content,
+            variables = variables,
+            codes_by_var = codes_by_var,
+            document_text_full = document_text_full,
+            system_msg = system_msg,
+            model = model,
+            is_anthropic = is_anthropic,
+            api_base = api_base,
+            context_budget = context_budget,
+            bool_thinking = bool_thinking,
+            bool_review = bool_review,
+        )
+
+        
+    def review_pass(
+            self,
+            text: str,
+            codings: list[dict],
+            messages: list[dict],
+            meta: dict,
+            user_content: str,
+            variables: list[dict],
+            codes_by_var: dict[str, list[dict]],
+            document_text_full: str,
+            system_msg: dict,
+            model: str,
+            is_anthropic: bool,
+            api_base: str | None,
+            context_budget: int,
+            bool_thinking: bool,
+            bool_review: bool,
+    ) -> tuple[list[dict], str, dict, str, str | None]:
+        """
+        Perform a review pass for the given codings and review statistics.
+
+        Args:
+            text: The original text that was coded.
+            codings: The list of coding dictionaries to review.
+            messages: The list of original messages sent to the LLM.
+            meta: Metadata dictionary associated with the codings.
+            user_content: The user content string associated with the codings.
+            variables: The variables requested in this batch.
+            codes_by_var: The valid codes for each variable.
+            document_text_full: The source document text.
+            system_msg: The system message for the conversation.
+            model: The language model to use.
+            is_anthropic: Whether the model is an Anthropic model.
+            api_base: The base URL for the API, if applicable.
+            context_budget: The maximum number of tokens to use per batch.
+            bool_thinking: Whether to enable thinking mode for the LLM.
+            bool_review: Whether to enable review mode for the LLM.
+
+        Returns:
+            A tuple containing:
+                - A list of cleaned codings (list[dict]).
+                - The raw response text from the LLM (str).
+                - Metadata dictionary (dict).
+                - User content string (str).
+                - Review message (str | None).
+        """
+
+        # Review if requested, or if there's a serious issue
+        # i.e. missing codes
+        review_msg, review_stats = self.build_review_message(codings)
 
         # If no review is needed, return the cleaned codings and the original response text.
         if review_msg is None:
+            print(f"  [green]LLM response fully validated.[/green]")
+            return self.clean_codings(codings), text, meta, user_content, None
+
+        # If bool_review is False and there are no missing variables, skip the review pass.
+        if not bool_review and review_stats['n_missing'] == 0:
+            print(f"  [green]LLM response had minor issues; skipping review pass as bool_review is False and there are no missing codings.[/green]")
             return self.clean_codings(codings), text, meta, user_content, None
 
         # We will do a review pass.
@@ -996,8 +1299,65 @@ class Coder():
             "model_loaded_2": meta2.get("model_loaded", False)
         }
 
-        # We won't try for another review, just return the cleaned codings from this pass.
-        return self.clean_codings(parse_codings(text2) or []), text2, combined_meta, user_content, review_msg
+        # Parse the review response before deciding whether JSON repair is needed.
+        # A malformed raw_response wrapper can also raise a JSON decoding error.
+        try:
+            reviewed_codings = parse_codings(text2) or []
+        except json.JSONDecodeError:
+            reviewed_codings = []
+
+        if (
+            not isinstance(reviewed_codings, list)
+            or not reviewed_codings
+            or not all(isinstance(c, dict) for c in reviewed_codings)
+            or (
+                len(reviewed_codings) == 1
+                and "Invalid JSON" in str(reviewed_codings[0].get("message", ""))
+            )
+        ):
+            # Preserve the review conversation and message, but never start a
+            # second review after repairing this response.
+            return self.handle_invalid_json(
+                text=text2,
+                codings=[],
+                messages=messages,
+                meta=combined_meta,
+                user_content=user_content,
+                variables=variables,
+                codes_by_var=codes_by_var,
+                document_text_full=document_text_full,
+                system_msg=system_msg,
+                model=model,
+                is_anthropic=is_anthropic,
+                api_base=api_base,
+                context_budget=context_budget,
+                bool_thinking=bool_thinking,
+                bool_review=bool_review,
+                bool_run_review_after_fix=False,
+                review_msg=review_msg,
+            )
+
+        # Validate even a syntactically valid review response so missing IDs
+        # are reported, without initiating another review pass.
+        validated = self.validate_response(
+            codings=reviewed_codings,
+            codes_by_var=codes_by_var,
+            variables=variables,
+            document_text_full=document_text_full,
+        )
+        missing = [c["id"] for c in validated if c.get("_missing")]
+        if missing:
+            print(
+                f"[yellow]Warning: Review response is missing codings for: {', '.join(map(str, missing))}[/yellow]",
+                file=sys.stderr,
+            )
+        return (
+            self.clean_codings([c for c in validated if not c.get("_missing")]),
+            text2,
+            combined_meta,
+            user_content,
+            review_msg,
+        )
 
     def code_document_inner(
         self,
