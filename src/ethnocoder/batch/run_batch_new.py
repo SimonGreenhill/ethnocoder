@@ -319,7 +319,7 @@ def run_batch(
         raise ValueError(f"Unknown model nicknames: {sorted(missing)}")
 
     # Check for existing output directories for each model and raise an error if any are not empty.
-    if output_batch_directory is not None:
+    if output_batch_directory is not None and not args.overwrite_model_subdirectory:
         for entry in retlist:
             for model in args.models:
                 model_dir = Path(output_batch_directory) / entry["folder_name"] / model
@@ -352,6 +352,15 @@ def run_batch(
             run_args.dump = False
             run_args.doc_size = False
             run_args.bool_debug_batches = False
+
+            # Delete existing subdirectory if overwrite is enabled
+            if args.overwrite_model_subdirectory:
+                model_dir = Path(output_batch_directory) / entry["folder_name"] / model
+                if model_dir.parent.is_symlink() or model_dir.is_symlink():
+                    raise ValueError(f"Refusing to overwrite symlink: {model_dir}")
+                if model_dir.exists():
+                    shutil.rmtree(model_dir)
+                model_dir.mkdir(parents=True, exist_ok=True)
 
             Coder(args=run_args).run()
 
@@ -468,10 +477,6 @@ if __name__ == "__main__":
         help="Run the batch without summarising the results.",
     )
 
-    # Params for coder
-    # model: the LLM to use for coding the document
-    parser.add_argument("-m", "--model", default=None, help="LiteLLM model string (required)")
-
     # variables: CSV file containing the variables to code
     parser.add_argument("--variables", default="parameters.csv", help="Variables CSV (default: parameters.csv)")
 
@@ -496,7 +501,7 @@ if __name__ == "__main__":
             "this budget (reusing a cached document prefix). Omit for a single request with all variables.",
         )
     
-        # response-reserve-per-var: Estimated output tokens reserved per variable when packing batches
+    # response-reserve-per-var: Estimated output tokens reserved per variable when packing batches
     parser.add_argument(
             "--response-reserve-per-var",
             type=int,
@@ -517,6 +522,9 @@ if __name__ == "__main__":
     # top-p: Set the top-p (nucleus sampling) for the LLM
     # Default is 0.95, recommended by SAIA for GLM 5.3 Flash.
     parser.add_argument("--top-p", type=float, default=0.95, help="Set the top-p (nucleus sampling) for the LLM")
+
+    # Overwrite the model subdirectory if it already exists
+    parser.add_argument("--overwrite_model_subdirectory", action="store_true")
 
     args = parser.parse_args()
 
