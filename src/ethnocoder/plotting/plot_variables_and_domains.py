@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import PercentFormatter
 from matplotlib.axes import Axes
 from matplotlib.patches import Patch
+from matplotlib.colors import to_rgba
 
 from ethnocoder.common.utils import get_timestamp, parse_csv_list
 
@@ -29,6 +30,7 @@ def draw_stacked_percentages(
     title: str,
     title_fontsize: int = 20,
     highlights: dict[str, str] | None = None,
+    highlights_mvm: dict[str, str] | None = None,
 ) -> None:
     """Draw stacked percentage bars on an existing axis."""
 
@@ -64,13 +66,25 @@ def draw_stacked_percentages(
         left = left + values
 
     axis.set_yticks(ticks=list(positions), labels=labels)
-    if highlights:
-        for tick, feature_id in zip(axis.get_yticklabels(), data[label_column]):
-            if feature_id in highlights:
-                color = highlights[feature_id]
-                tick.set_fontweight("bold")
-                tick.set_color("black")
-                tick.set_bbox(dict(boxstyle="round", facecolor=color, edgecolor=color, alpha=0.4))
+    
+    # Human-vs-human highlights
+    # These are solid green and solid red boxes.
+    # Model-vs-model highlights
+    # These are green and red rounded outlines around the tick labels.
+    for tick, feature_id in zip(axis.get_yticklabels(), data[label_column]):
+        human = (highlights or {}).get(feature_id)
+        model = (highlights_mvm or {}).get(feature_id)
+
+        if human or model:
+            tick.set_fontweight("bold")
+            tick.set_color("black")
+            tick.set_bbox(dict(
+                boxstyle="round",
+                facecolor=to_rgba(human, 0.4) if human else "none",
+                edgecolor=model or (to_rgba(human, 0.4) if human else "none"),
+                linewidth=2 if model else 1,
+            ))
+
     axis.invert_yaxis()
     axis.set_xlim(left=0, right=max(100, left.max()))
 
@@ -110,6 +124,7 @@ def plot_variables_by_domain(
     models: list[str],
     output_path: Path,
     bool_highlights: bool = False,
+    fpath_model_vs_model: Path | None = None,
 ) -> None:
     """Save variable bars in four columns, with two domains stacked in the last."""
     if data.empty:
@@ -132,6 +147,20 @@ def plot_variables_by_domain(
                 if overlap:
                     raise ValueError(f"Variables appear in both highlight files: {sorted(overlap)}")
                 highlights.update(dict.fromkeys(entries, color))
+
+    # Model vs model results for highlighting, if supplied
+    highlights_mvm = {}
+    if fpath_model_vs_model is not None and fpath_model_vs_model.exists():
+
+        # Load into pandas dataframe
+        df_mvm = pd.read_csv(fpath_model_vs_model, sep="\t")
+
+        # Get the top 20 and bottom 20 by column pct_agree
+        top_20 = df_mvm.nlargest(20, "pct_agree")["Feature_ID"].tolist()
+        bottom_20 = df_mvm.nsmallest(20, "pct_agree")["Feature_ID"].tolist()
+        highlights_mvm.update(dict.fromkeys(top_20, "green"))
+        highlights_mvm.update(dict.fromkeys(bottom_20, "red"))
+
 
     counts = data.groupby("Main_domain").size()
     pronoun_count = counts.get("pronoun", 0)
@@ -160,6 +189,7 @@ def plot_variables_by_domain(
             title=domain,
             title_fontsize=30,
             highlights=highlights,
+            highlights_mvm=highlights_mvm,
         )
 
     fig.suptitle(f"Variables — models: {', '.join(models)}")
@@ -184,6 +214,7 @@ def plot_variables_and_domains(
     grouping_file: Path = Path("feature_grouping_for_analysis.csv"),
     output_dir: Path | None = None,
     bool_highlights: bool = False,
+    fpath_model_vs_model: Path | None = None,
 ) -> None:
     """Plot variable percentages and unweighted domain averages."""
     if not models:
@@ -243,6 +274,18 @@ def plot_variables_and_domains(
             output_path_finer.stem + "_highlights.png"
         )
 
+    # For all three filepaths, add "_mvm" if fpath_model_vs_model is provided
+    if fpath_model_vs_model is not None:
+        output_path_variables_by_domain = output_path_variables_by_domain.with_name(
+            output_path_variables_by_domain.stem + "_mvm.png"
+        )
+        output_path_main = output_path_main.with_name(
+            output_path_main.stem + "_mvm.png"
+        )
+        output_path_finer = output_path_finer.with_name(
+            output_path_finer.stem + "_mvm.png"
+        )
+
     model_label = ", ".join(models)
 
     plot_variables_by_domain(
@@ -251,6 +294,7 @@ def plot_variables_and_domains(
         models=models,
         output_path=output_path_variables_by_domain,
         bool_highlights=bool_highlights,
+        fpath_model_vs_model=fpath_model_vs_model,
     )
 
     for data, label, name, filename in (
@@ -292,6 +336,14 @@ if __name__ == "__main__":
         help="Whether to plot highlights on the variables-by-domain plot.",
     )
 
+    # Filepath: model-vs-model comparison results
+    parser.add_argument(
+        "--fpath-model-vs-model",
+        type=Path,
+        default=None,
+        help="Filepath to the model-vs-model comparison results.",
+    )
+
     args = parser.parse_args()
     plot_variables_and_domains(
         summary_file = args.summary_file, 
@@ -299,4 +351,5 @@ if __name__ == "__main__":
         grouping_file = args.grouping_file,
         output_dir = args.output_dir,
         bool_highlights = args.bool_highlights,
+        fpath_model_vs_model = args.fpath_model_vs_model,
     )
