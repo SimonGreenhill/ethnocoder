@@ -1555,7 +1555,7 @@ class Coder():
 
         return all_codings
 
-    def model_dirname(self, model: str) -> str:
+    def model_dirname(self, model: str, task: str | None = None) -> str:
         """
         Return the directory name for storing model outputs.
 
@@ -1583,11 +1583,19 @@ class Coder():
 
         ts_date, ts_time = ts.split("_")
 
-        out_dir = os.path.join(
-            "output",
-            ts_date,
-            f"{ts_time}_{model.split('/')[-1].replace(':', '_')}_{os_name}",
-        )
+        if task is None:
+            out_dir = os.path.join(
+                "output",
+                ts_date,
+                f"{ts_time}_{model.split('/')[-1].replace(':', '_')}_{os_name}",
+            )
+        else:
+            out_dir = os.path.join(
+                "output",
+                task,
+                ts_date,
+                f"{ts_time}_{model.split('/')[-1].replace(':', '_')}_{os_name}",
+            )
 
         return out_dir
 

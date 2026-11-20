@@ -370,6 +370,12 @@ def llm_stream(
                 if getattr(chunk, "usage", None):
                     usage = chunk.usage
 
+                # Some providers send chunks with an empty choices list, most
+                # often the final usage-only chunk from include_usage=True, and
+                # sometimes keep-alives. Nothing to collect from them; skip.
+                if not chunk.choices:
+                    continue
+
                 # Get the content delta from the chunk.
                 delta = chunk.choices[0].delta.content or ""
                 if delta:
